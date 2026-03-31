@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  CHEF
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum OrderType {
+  DAILY_MEAL
+  PANTRY_ITEM
+  FUEL_PLAN
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum DeliveryStatus {
+  PENDING
+  ASSIGNED
+  PICKED_UP
+  DELIVERED
+  FAILED
+}
+
+model User {
+  id         String   @id @default(uuid())
+  name       String
+  phone      String   @unique
+  email      String   @unique
+  password   String
+  role       Role     @default(USER)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  chef       Chef?
+  follows    Follow[] @relation("UserFollows")
+  orders     Order[]
+}
+
+model Chef {
+  id          String   @id @default(uuid())
+  user_id     String   @unique
+  user        User     @relation(fields: [user_id], references: [id])
+  bio         String?
+  rating      Float    @default(0.0)
+  is_verified Boolean  @default(false)
+  trust_tier  Int      @default(1)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  followers   Follow[]     @relation("ChefFollowers")
+  meals       DailyMeal[]
+  pantry      PantryItem[]
+  fuel_slots  FuelSlot[]
+  orders      Order[]
+}
+
+model Follow {
+  id      String @id @default(uuid())
+  user_id String
+  chef_id String
+  user    User   @relation("UserFollows", fields: [user_id], references: [id])
+  chef    Chef   @relation("ChefFollowers", fields: [chef_id], references: [id])
+
+  @@unique([user_id, chef_id])
+}
+
+model DailyMeal {
+  id              String   @id @default(uuid())
+  chef_id         String
+  chef            Chef     @relation(fields: [chef_id], references: [id])
+  meal_name       String
+  type            String
+  price           Float
+  slots_total     Int
+  slots_remaining Int
+  date            DateTime
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  order_items     OrderItem[]
+}
+
+model FuelPlan {
+  id          String   @id @default(uuid())
+  name        String
+  goal        String
+  description String
+  price       Float
+  menu_json   Json
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  slots       FuelSlot[]
+}
+
+model FuelSlot {
+  id              String   @id @default(uuid())
+  chef_id         String
+  chef            Chef     @relation(fields: [chef_id], references: [id])
+  plan_id         String
+  plan            FuelPlan @relation(fields: [plan_id], references: [id])
+  time_slot       String
+  capacity        Int
+  slots_remaining Int
+  created_at      DateTime @default(now())
+
+  order_items     OrderItem[]
+}
+
+model PantryItem {
+  id          String   @id @default(uuid())
+  chef_id     String
+  chef            Chef     @relation(fields: [chef_id], references: [id])
+  name        String
+  category    String
+  price       Float
+  inventory   Int
+  image_url   String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  order_items OrderItem[]
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  user_id     String
+  chef_id     String
+  user        User        @relation(fields: [user_id], references: [id])
+  chef        Chef        @relation(fields: [chef_id], references: [id])
+  order_type  OrderType
+  status      OrderStatus @default(PENDING)
+  total_price Float
+  created_at  DateTime    @default(now())
+  updated_at  DateTime    @updatedAt
+
+  items       OrderItem[]
+  payment     Payment?
+  delivery    Delivery?
+}
+
+model OrderItem {
+  id            String     @id @default(uuid())
+  order_id      String
+  order         Order      @relation(fields: [order_id], references: [id])
+  
+  // Polymorphic-like relation via manual tracking
+  item_id       String     
+  quantity      Int
+  price         Float      // Price at the time of order
+
+  // Relations to actual items (at least one should be populated based on OrderType)
+  daily_meal_id String?
+  daily_meal    DailyMeal? @relation(fields: [daily_meal_id], references: [id])
+  pantry_id     String?
+  pantry_item   PantryItem? @relation(fields: [pantry_id], references: [id])
+  fuel_slot_id  String?
+  fuel_slot     FuelSlot?  @relation(fields: [fuel_slot_id], references: [id])
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  order_id       String        @unique
+  order          Order         @relation(fields: [order_id], references: [id])
+  amount         Float
+  status         PaymentStatus @default(PENDING)
+  gateway_id     String?       // Razorpay payment ID
+  escrow_status  String        @default("PENDING") // PENDING, HELD, RELEASED, REFUNDED
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+}
+
+model Delivery {
+  id             String         @id @default(uuid())
+  order_id       String         @unique
+  order          Order          @relation(fields: [order_id], references: [id])
+  driver_id      String?
+  pickup_time    DateTime?
+  delivered_time DateTime?
+  pod_image      String?        // Proof of Delivery
+  status         DeliveryStatus @default(PENDING)
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
+}
