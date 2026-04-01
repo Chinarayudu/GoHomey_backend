@@ -13,6 +13,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SubscriptionsController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const subscriptions_dto_1 = require("./dto/subscriptions.dto");
@@ -49,6 +50,7 @@ __decorate([
     (0, swagger_1.ApiBearerAuth)(),
     (0, common_1.Post)('plans'),
     (0, swagger_1.ApiOperation)({ summary: 'Create a new fuel plan (Admin only)' }),
+    openapi.ApiResponse({ status: 201, type: Object }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [subscriptions_dto_1.CreatePlanDto]),
@@ -57,6 +59,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('plans'),
     (0, swagger_1.ApiOperation)({ summary: 'Get all available fuel plans' }),
+    openapi.ApiResponse({ status: 200, type: [Object] }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
@@ -64,6 +67,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('plans/:id'),
     (0, swagger_1.ApiOperation)({ summary: 'Get a specific fuel plan by ID' }),
+    openapi.ApiResponse({ status: 200, type: Object }),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -75,6 +79,7 @@ __decorate([
     (0, swagger_1.ApiBearerAuth)(),
     (0, common_1.Post)('slots'),
     (0, swagger_1.ApiOperation)({ summary: 'Create a new fuel slot for a plan (Chef only)' }),
+    openapi.ApiResponse({ status: 201, type: Object }),
     __param(0, (0, common_1.Request)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -84,6 +89,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('slots/chef/:chefId'),
     (0, swagger_1.ApiOperation)({ summary: 'Get all fuel slots for a specific chef' }),
+    openapi.ApiResponse({ status: 200, type: [Object] }),
     __param(0, (0, common_1.Param)('chefId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),

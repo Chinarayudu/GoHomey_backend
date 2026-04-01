@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const admin_service_1 = require("./admin.service");
@@ -36,6 +37,7 @@ exports.AdminController = AdminController;
 __decorate([
     (0, common_1.Get)('stats'),
     (0, swagger_1.ApiOperation)({ summary: 'Get overall platform statistics (Admin only)' }),
+    openapi.ApiResponse({ status: 200 }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
@@ -43,6 +45,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('top-chefs'),
     (0, swagger_1.ApiOperation)({ summary: 'Get top performing chefs (Admin only)' }),
+    openapi.ApiResponse({ status: 200, type: [Object] }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
@@ -50,6 +53,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('revenue/daily'),
     (0, swagger_1.ApiOperation)({ summary: 'Get daily revenue analytics (Admin only)' }),
+    openapi.ApiResponse({ status: 200 }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)

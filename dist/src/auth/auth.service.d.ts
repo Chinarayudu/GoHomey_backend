@@ -19,7 +19,7 @@ export declare class AuthService {
         id: string;
         phone: string;
         email: string;
-        role: import("@prisma/client").$Enums.Role;
+        role: import(".prisma/client").$Enums.Role;
         created_at: Date;
         updated_at: Date;
     }>;

@@ -13,19 +13,19 @@ export declare class PantryController {
             id: string;
             created_at: Date;
             updated_at: Date;
+            user_id: string;
             bio: string | null;
             rating: number;
             is_verified: boolean;
             trust_tier: number;
-            user_id: string;
         };
     } & {
-        id: string;
         name: string;
+        id: string;
         created_at: Date;
         updated_at: Date;
-        chef_id: string;
         price: number;
+        chef_id: string;
         category: string;
         inventory: number;
         image_url: string | null;
