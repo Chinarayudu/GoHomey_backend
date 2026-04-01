@@ -6,20 +6,20 @@ export declare class ChefsController {
         id: string;
         created_at: Date;
         updated_at: Date;
+        user_id: string;
         bio: string | null;
         rating: number;
         is_verified: boolean;
         trust_tier: number;
-        user_id: string;
     }>;
     findAll(): Promise<({
         user: {
+            name: string;
             id: string;
             phone: string;
             email: string;
-            name: string;
             password: string;
-            role: import("@prisma/client").$Enums.Role;
+            role: import(".prisma/client").$Enums.Role;
             created_at: Date;
             updated_at: Date;
         };
@@ -27,30 +27,30 @@ export declare class ChefsController {
         id: string;
         created_at: Date;
         updated_at: Date;
+        user_id: string;
         bio: string | null;
         rating: number;
         is_verified: boolean;
         trust_tier: number;
-        user_id: string;
     })[]>;
     findOne(id: string): Promise<{
         id: string;
         created_at: Date;
         updated_at: Date;
+        user_id: string;
         bio: string | null;
         rating: number;
         is_verified: boolean;
         trust_tier: number;
-        user_id: string;
     } | null>;
     verifyChef(id: string, isVerified: boolean, trustTier: number): Promise<{
         id: string;
         created_at: Date;
         updated_at: Date;
+        user_id: string;
         bio: string | null;
         rating: number;
         is_verified: boolean;
         trust_tier: number;
-        user_id: string;
     }>;
 }

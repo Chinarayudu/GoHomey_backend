@@ -13,6 +13,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentsController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const payments_service_1 = require("./payments.service");
@@ -35,6 +36,7 @@ __decorate([
     (0, swagger_1.ApiBearerAuth)(),
     (0, common_1.Post)('create'),
     (0, swagger_1.ApiOperation)({ summary: 'Initiate a new payment for an order' }),
+    openapi.ApiResponse({ status: 201 }),
     __param(0, (0, common_1.Body)('orderId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -43,6 +45,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)('verify'),
     (0, swagger_1.ApiOperation)({ summary: 'Verify payment from gateway (callback/webhook)' }),
+    openapi.ApiResponse({ status: 201, type: Object }),
     __param(0, (0, common_1.Body)('razorpay_order_id')),
     __param(1, (0, common_1.Body)('razorpay_payment_id')),
     __param(2, (0, common_1.Body)('razorpay_signature')),

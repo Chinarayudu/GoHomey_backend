@@ -10,11 +10,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateOrderStatusDto = exports.CreatePantryOrderDto = exports.CreateMealOrderDto = void 0;
+const openapi = require("@nestjs/swagger");
 const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class CreateMealOrderDto {
     mealId;
     quantity;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { mealId: { required: true, type: () => String }, quantity: { required: true, type: () => Number } };
+    }
 }
 exports.CreateMealOrderDto = CreateMealOrderDto;
 __decorate([
@@ -32,6 +36,9 @@ __decorate([
 class CreatePantryOrderDto {
     itemId;
     quantity;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { itemId: { required: true, type: () => String }, quantity: { required: true, type: () => Number } };
+    }
 }
 exports.CreatePantryOrderDto = CreatePantryOrderDto;
 __decorate([
@@ -48,6 +55,17 @@ __decorate([
 ], CreatePantryOrderDto.prototype, "quantity", void 0);
 class UpdateOrderStatusDto {
     status;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { status: { required: true, type: () => Object, enum: [
+                    'PENDING',
+                    'CONFIRMED',
+                    'PREPARING',
+                    'OUT_FOR_DELIVERY',
+                    'DELIVERED',
+                    'CANCELLED',
+                    'REFUNDED',
+                ] } };
+    }
 }
 exports.UpdateOrderStatusDto = UpdateOrderStatusDto;
 __decorate([

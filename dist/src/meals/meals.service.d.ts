@@ -9,30 +9,30 @@ export declare class MealsService {
     }): Promise<({
         chef: {
             user: {
-                email: string;
                 name: string;
+                email: string;
             };
         } & {
             id: string;
             created_at: Date;
             updated_at: Date;
+            user_id: string;
             bio: string | null;
             rating: number;
             is_verified: boolean;
             trust_tier: number;
-            user_id: string;
         };
     } & {
         id: string;
         created_at: Date;
         updated_at: Date;
-        chef_id: string;
         type: string;
         meal_name: string;
         price: number;
         slots_total: number;
         slots_remaining: number;
         date: Date;
+        chef_id: string;
     })[]>;
     findOne(id: string): Promise<any>;
     update(id: string, chefId: string, data: any): Promise<any>;

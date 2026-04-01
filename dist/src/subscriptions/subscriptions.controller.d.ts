@@ -14,24 +14,24 @@ export declare class SubscriptionsController {
                 id: string;
                 created_at: Date;
                 updated_at: Date;
+                user_id: string;
                 bio: string | null;
                 rating: number;
                 is_verified: boolean;
                 trust_tier: number;
-                user_id: string;
             };
         } & {
             id: string;
             created_at: Date;
-            chef_id: string;
             slots_remaining: number;
+            chef_id: string;
             plan_id: string;
             time_slot: string;
             capacity: number;
         })[];
     } & {
-        id: string;
         name: string;
+        id: string;
         created_at: Date;
         updated_at: Date;
         description: string;
@@ -43,8 +43,8 @@ export declare class SubscriptionsController {
     createSlot(req: any, createSlotDto: CreateSlotDto): Promise<any>;
     findSlotsByChef(chefId: string): Promise<({
         plan: {
-            id: string;
             name: string;
+            id: string;
             created_at: Date;
             updated_at: Date;
             description: string;
@@ -55,8 +55,8 @@ export declare class SubscriptionsController {
     } & {
         id: string;
         created_at: Date;
-        chef_id: string;
         slots_remaining: number;
+        chef_id: string;
         plan_id: string;
         time_slot: string;
         capacity: number;

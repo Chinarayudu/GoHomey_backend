@@ -10,7 +10,7 @@ export declare class OrdersController {
             id: string;
             created_at: Date;
             updated_at: Date;
-            status: import("@prisma/client").$Enums.PaymentStatus;
+            status: import(".prisma/client").$Enums.PaymentStatus;
             order_id: string;
             amount: number;
             gateway_id: string | null;
@@ -20,7 +20,7 @@ export declare class OrdersController {
             id: string;
             created_at: Date;
             updated_at: Date;
-            status: import("@prisma/client").$Enums.DeliveryStatus;
+            status: import(".prisma/client").$Enums.DeliveryStatus;
             order_id: string;
             driver_id: string | null;
             pickup_time: Date | null;
@@ -43,8 +43,8 @@ export declare class OrdersController {
         updated_at: Date;
         user_id: string;
         chef_id: string;
-        order_type: import("@prisma/client").$Enums.OrderType;
-        status: import("@prisma/client").$Enums.OrderStatus;
+        order_type: import(".prisma/client").$Enums.OrderType;
+        status: import(".prisma/client").$Enums.OrderStatus;
         total_price: number;
     })[]>;
     findChefOrders(req: any): Promise<({
@@ -52,7 +52,7 @@ export declare class OrdersController {
             id: string;
             created_at: Date;
             updated_at: Date;
-            status: import("@prisma/client").$Enums.PaymentStatus;
+            status: import(".prisma/client").$Enums.PaymentStatus;
             order_id: string;
             amount: number;
             gateway_id: string | null;
@@ -62,7 +62,7 @@ export declare class OrdersController {
             id: string;
             created_at: Date;
             updated_at: Date;
-            status: import("@prisma/client").$Enums.DeliveryStatus;
+            status: import(".prisma/client").$Enums.DeliveryStatus;
             order_id: string;
             driver_id: string | null;
             pickup_time: Date | null;
@@ -85,8 +85,8 @@ export declare class OrdersController {
         updated_at: Date;
         user_id: string;
         chef_id: string;
-        order_type: import("@prisma/client").$Enums.OrderType;
-        status: import("@prisma/client").$Enums.OrderStatus;
+        order_type: import(".prisma/client").$Enums.OrderType;
+        status: import(".prisma/client").$Enums.OrderStatus;
         total_price: number;
     })[]>;
     updateStatus(id: string, body: UpdateOrderStatusDto): Promise<{
@@ -95,8 +95,8 @@ export declare class OrdersController {
         updated_at: Date;
         user_id: string;
         chef_id: string;
-        order_type: import("@prisma/client").$Enums.OrderType;
-        status: import("@prisma/client").$Enums.OrderStatus;
+        order_type: import(".prisma/client").$Enums.OrderType;
+        status: import(".prisma/client").$Enums.OrderStatus;
         total_price: number;
     }>;
 }

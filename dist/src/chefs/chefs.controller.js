@@ -13,6 +13,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChefsController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const chefs_service_1 = require("./chefs.service");
@@ -44,6 +45,7 @@ __decorate([
     (0, swagger_1.ApiBearerAuth)(),
     (0, common_1.Post)('apply'),
     (0, swagger_1.ApiOperation)({ summary: 'Apply to be a chef' }),
+    openapi.ApiResponse({ status: 201 }),
     __param(0, (0, common_1.Body)('bio')),
     __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
@@ -53,6 +55,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(),
     (0, swagger_1.ApiOperation)({ summary: 'Get all chefs' }),
+    openapi.ApiResponse({ status: 200, type: [Object] }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
@@ -60,6 +63,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id'),
     (0, swagger_1.ApiOperation)({ summary: 'Get a specific chef by ID' }),
+    openapi.ApiResponse({ status: 200, type: Object }),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -71,6 +75,7 @@ __decorate([
     (0, swagger_1.ApiBearerAuth)(),
     (0, common_1.Patch)(':id/verify'),
     (0, swagger_1.ApiOperation)({ summary: 'Verify or unverify a chef (Admin only)' }),
+    openapi.ApiResponse({ status: 200 }),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)('is_verified')),
     __param(2, (0, common_1.Body)('trust_tier')),

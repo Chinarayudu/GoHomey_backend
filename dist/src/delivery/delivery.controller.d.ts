@@ -7,8 +7,8 @@ export declare class DeliveryController {
     findActive(): Promise<({
         order: {
             user: {
-                phone: string;
                 name: string;
+                phone: string;
             };
             chef: {
                 user: {
@@ -18,11 +18,11 @@ export declare class DeliveryController {
                 id: string;
                 created_at: Date;
                 updated_at: Date;
+                user_id: string;
                 bio: string | null;
                 rating: number;
                 is_verified: boolean;
                 trust_tier: number;
-                user_id: string;
             };
         } & {
             id: string;
@@ -30,15 +30,15 @@ export declare class DeliveryController {
             updated_at: Date;
             user_id: string;
             chef_id: string;
-            order_type: import("@prisma/client").$Enums.OrderType;
-            status: import("@prisma/client").$Enums.OrderStatus;
+            order_type: import(".prisma/client").$Enums.OrderType;
+            status: import(".prisma/client").$Enums.OrderStatus;
             total_price: number;
         };
     } & {
         id: string;
         created_at: Date;
         updated_at: Date;
-        status: import("@prisma/client").$Enums.DeliveryStatus;
+        status: import(".prisma/client").$Enums.DeliveryStatus;
         order_id: string;
         driver_id: string | null;
         pickup_time: Date | null;
@@ -49,7 +49,7 @@ export declare class DeliveryController {
         id: string;
         created_at: Date;
         updated_at: Date;
-        status: import("@prisma/client").$Enums.DeliveryStatus;
+        status: import(".prisma/client").$Enums.DeliveryStatus;
         order_id: string;
         driver_id: string | null;
         pickup_time: Date | null;
