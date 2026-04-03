@@ -1,16 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
-
-@Injectable()
 export class NotificationsService {
-  private readonly logger = new Logger(NotificationsService.name);
-
   async sendPushNotification(
     userId: string,
     title: string,
     body: string,
     data?: any,
   ) {
-    this.logger.log(
+    console.log(
       `Sending push notification to user ${userId}: ${title} - ${body}`,
     );
     // In production, integrate with Firebase Cloud Messaging (FCM)
@@ -19,7 +14,7 @@ export class NotificationsService {
   }
 
   async sendOrderNotificationToChef(chefId: string, orderId: string) {
-    this.logger.log(
+    console.log(
       `Sending order notification to chef ${chefId} for order ${orderId}`,
     );
     return this.sendPushNotification(
@@ -35,7 +30,7 @@ export class NotificationsService {
     orderId: string,
     status: string,
   ) {
-    this.logger.log(
+    console.log(
       `Sending order status update to user ${userId} for order ${orderId}: ${status}`,
     );
     return this.sendPushNotification(
@@ -46,3 +41,5 @@ export class NotificationsService {
     );
   }
 }
+
+export const notificationsService = new NotificationsService();

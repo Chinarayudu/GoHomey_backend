@@ -1,21 +1,17 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { prisma } from '../prisma/prisma.service';
 
-@Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
-
   async getPlatformStats() {
-    const totalUsers = await this.prisma.user.count();
-    const totalChefs = await this.prisma.chef.count({
+    const totalUsers = await prisma.user.count();
+    const totalChefs = await prisma.chef.count({
       where: { is_verified: true },
     });
-    const pendingChefs = await this.prisma.chef.count({
+    const pendingChefs = await prisma.chef.count({
       where: { is_verified: false },
     });
-    const totalOrders = await this.prisma.order.count();
+    const totalOrders = await prisma.order.count();
 
-    const revenue = await this.prisma.payment.aggregate({
+    const revenue = await prisma.payment.aggregate({
       where: { status: 'COMPLETED' },
       _sum: { amount: true },
     });
@@ -33,7 +29,7 @@ export class AdminService {
 
   async getTopChefs() {
     // Basic implementation: top 5 chefs by order count
-    const topChefs = await (this.prisma as any).order.groupBy({
+    const topChefs = await (prisma as any).order.groupBy({
       by: ['chef_id'],
       _count: {
         id: true,
@@ -48,8 +44,8 @@ export class AdminService {
 
     // Enrich with chef details
     const enrichedChefs = await Promise.all(
-      topChefs.map(async (item) => {
-        const chef = await this.prisma.chef.findUnique({
+      topChefs.map(async (item: any) => {
+        const chef = await prisma.chef.findUnique({
           where: { id: item.chef_id },
           include: { user: { select: { name: true } } } as any,
         });
@@ -67,7 +63,7 @@ export class AdminService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const revenuePerDay = await this.prisma.payment.findMany({
+    const revenuePerDay = await prisma.payment.findMany({
       where: {
         status: 'COMPLETED',
         created_at: {
@@ -86,3 +82,5 @@ export class AdminService {
     return revenuePerDay;
   }
 }
+
+export const adminService = new AdminService();

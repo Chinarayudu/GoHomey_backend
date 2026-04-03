@@ -1,18 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { prisma } from '../prisma/prisma.service';
 
-@Injectable()
 export class SubscriptionsService {
-  constructor(private prisma: PrismaService) {}
-
   async createPlan(data: any): Promise<any> {
-    return this.prisma.fuelPlan.create({
+    return prisma.fuelPlan.create({
       data,
     });
   }
 
   async findAllPlans() {
-    return this.prisma.fuelPlan.findMany({
+    return prisma.fuelPlan.findMany({
       include: {
         slots: {
           include: {
@@ -30,7 +26,7 @@ export class SubscriptionsService {
   }
 
   async findOnePlan(id: string): Promise<any> {
-    const plan = await this.prisma.fuelPlan.findUnique({
+    const plan = await prisma.fuelPlan.findUnique({
       where: { id },
       include: {
         slots: {
@@ -47,14 +43,16 @@ export class SubscriptionsService {
       },
     });
     if (!plan) {
-      throw new NotFoundException('Subscription plan not found');
+      const error: any = new Error('Subscription plan not found');
+      error.status = 404;
+      throw error;
     }
     return plan;
   }
 
   async createSlot(chefId: string, data: any): Promise<any> {
     const { plan_id, ...slotData } = data;
-    return this.prisma.fuelSlot.create({
+    return prisma.fuelSlot.create({
       data: {
         ...slotData,
         chef: { connect: { id: chefId } },
@@ -65,9 +63,11 @@ export class SubscriptionsService {
   }
 
   async findSlotsByChef(chefId: string) {
-    return this.prisma.fuelSlot.findMany({
+    return prisma.fuelSlot.findMany({
       where: { chef_id: chefId },
       include: { plan: true },
     });
   }
 }
+
+export const subscriptionsService = new SubscriptionsService();
