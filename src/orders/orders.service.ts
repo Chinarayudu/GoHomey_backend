@@ -1,32 +1,25 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { PrismaService } from '../prisma/prisma.service';
+import { prisma } from '../prisma/prisma.service';
+import { ordersQueue } from '../common/queues/queues';
+import { Prisma } from '@prisma/client';
 
-@Injectable()
 export class OrdersService {
-  constructor(
-    private prisma: PrismaService,
-    @InjectQueue('orders') private orderQueue: Queue,
-  ) {}
-
   async createDailyMealOrder(userId: string, mealId: string, quantity: number) {
-    return (this.prisma as any).$transaction(async (tx: any) => {
+    return prisma.$transaction(async (tx) => {
       // 1. Check if meal exists and has capacity
       const meal = await tx.dailyMeal.findUnique({
         where: { id: mealId },
       });
 
       if (!meal) {
-        throw new NotFoundException('Meal not found');
+        const error: any = new Error('Meal not found');
+        error.status = 404;
+        throw error;
       }
 
       if (meal.slots_remaining < quantity) {
-        throw new BadRequestException('Not enough slots available');
+        const error: any = new Error('Not enough slots available');
+        error.status = 400;
+        throw error;
       }
 
       // 2. Decrement slots
@@ -62,7 +55,7 @@ export class OrdersService {
       });
 
       // 5. Add to queue for async tasks
-      await this.orderQueue.add('send-order-notification', {
+      await ordersQueue.add('send-order-notification', {
         orderId: order.id,
         chefId: meal.chef_id,
         userId: userId,
@@ -73,17 +66,21 @@ export class OrdersService {
   }
 
   async createPantryOrder(userId: string, itemId: string, quantity: number) {
-    return (this.prisma as any).$transaction(async (tx: any) => {
+    return prisma.$transaction(async (tx) => {
       const item = await tx.pantryItem.findUnique({
         where: { id: itemId },
       });
 
       if (!item) {
-        throw new NotFoundException('Pantry item not found');
+        const error: any = new Error('Pantry item not found');
+        error.status = 404;
+        throw error;
       }
 
       if (item.inventory < quantity) {
-        throw new BadRequestException('Not enough inventory');
+        const error: any = new Error('Not enough inventory');
+        error.status = 400;
+        throw error;
       }
 
       await tx.pantryItem.update({
@@ -117,7 +114,7 @@ export class OrdersService {
       });
 
       // 5. Add to queue for async tasks
-      await this.orderQueue.add('send-order-notification', {
+      await ordersQueue.add('send-order-notification', {
         orderId: order.id,
         chefId: item.chef_id,
         userId: userId,
@@ -128,7 +125,7 @@ export class OrdersService {
   }
 
   async findUserOrders(userId: string) {
-    return this.prisma.order.findMany({
+    return prisma.order.findMany({
       where: { user_id: userId },
       include: {
         items: true,
@@ -140,7 +137,7 @@ export class OrdersService {
   }
 
   async findChefOrders(chefId: string) {
-    return this.prisma.order.findMany({
+    return prisma.order.findMany({
       where: { chef_id: chefId },
       include: {
         items: true,
@@ -152,13 +149,13 @@ export class OrdersService {
   }
 
   async updateOrderStatus(id: string, status: any) {
-    const order = await this.prisma.order.update({
+    const order = await prisma.order.update({
       where: { id },
       data: { status },
     });
 
     // Notify user of status update
-    await this.orderQueue.add('send-order-status-update', {
+    await ordersQueue.add('send-order-status-update', {
       orderId: order.id,
       userId: order.user_id,
       status,
@@ -167,3 +164,5 @@ export class OrdersService {
     return order;
   }
 }
+
+export const ordersService = new OrdersService();

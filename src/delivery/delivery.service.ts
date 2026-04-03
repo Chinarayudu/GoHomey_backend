@@ -1,22 +1,18 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { prisma } from '../prisma/prisma.service';
 
-@Injectable()
 export class DeliveryService {
-  private readonly logger = new Logger(DeliveryService.name);
-
-  constructor(private prisma: PrismaService) {}
-
   async createDelivery(orderId: string, deliveryPartnerId?: string) {
-    const order = await this.prisma.order.findUnique({
+    const order = await prisma.order.findUnique({
       where: { id: orderId },
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      const error: any = new Error('Order not found');
+      error.status = 404;
+      throw error;
     }
 
-    return this.prisma.delivery.create({
+    return prisma.delivery.create({
       data: {
         order_id: orderId,
         driver_id: deliveryPartnerId || 'PENDING_PARTNER',
@@ -27,7 +23,7 @@ export class DeliveryService {
   }
 
   async findActiveDeliveries() {
-    return this.prisma.delivery.findMany({
+    return prisma.delivery.findMany({
       where: {
         status: {
           in: ['PENDING', 'PICKED_UP'],
@@ -45,13 +41,13 @@ export class DeliveryService {
   }
 
   async updateDeliveryStatus(id: string, status: any) {
-    const delivery = await this.prisma.delivery.update({
+    const delivery = await prisma.delivery.update({
       where: { id },
       data: { status },
     });
 
     if (status === 'DELIVERED') {
-      await this.prisma.order.update({
+      await prisma.order.update({
         where: { id: delivery.order_id },
         data: { status: 'DELIVERED' },
       });
@@ -61,19 +57,20 @@ export class DeliveryService {
   }
 
   async processBatchedDeliveries() {
-    this.logger.log('Processing batched deliveries...');
+    console.log('Processing batched deliveries...');
 
     // Find orders that are confirmed but don't have a delivery record yet
-    const pendingOrders = await this.prisma.order.findMany({
+    const pendingOrders = await prisma.order.findMany({
       where: {
         status: 'CONFIRMED',
+        // @ts-ignore
         delivery: { is: null },
       },
       include: { chef: true },
     });
 
     if (pendingOrders.length === 0) {
-      this.logger.log('No pending orders for batching.');
+      console.log('No pending orders for batching.');
       return;
     }
 
@@ -89,7 +86,7 @@ export class DeliveryService {
 
     for (const chefId in chefGroups) {
       const orders = chefGroups[chefId];
-      this.logger.log(
+      console.log(
         `Creating batch delivery for Chef ${chefId} with ${orders.length} orders`,
       );
 
@@ -97,7 +94,7 @@ export class DeliveryService {
         await this.createDelivery(order.id);
 
         // Update order status to out for delivery
-        await this.prisma.order.update({
+        await prisma.order.update({
           where: { id: order.id },
           data: { status: 'OUT_FOR_DELIVERY' },
         });
@@ -105,3 +102,5 @@ export class DeliveryService {
     }
   }
 }
+
+export const deliveryService = new DeliveryService();

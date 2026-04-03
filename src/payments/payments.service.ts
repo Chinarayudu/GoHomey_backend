@@ -1,26 +1,20 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
+import { prisma } from '../prisma/prisma.service';
 
-@Injectable()
 export class PaymentsService {
-  constructor(
-    private prisma: PrismaService,
-    private configService: ConfigService,
-  ) {}
-
   async createPayment(orderId: string) {
-    const order = await this.prisma.order.findUnique({
+    const order = await prisma.order.findUnique({
       where: { id: orderId },
     });
 
     if (!order) {
-      throw new BadRequestException('Order not found');
+      const error: any = new Error('Order not found');
+      error.status = 400;
+      throw error;
     }
 
     const razorpayOrderId = `rzp_test_${Math.random().toString(36).substring(7)}`;
 
-    const payment = await this.prisma.payment.create({
+    const payment = await prisma.payment.create({
       data: {
         order_id: orderId,
         amount: order.total_price,
@@ -43,15 +37,17 @@ export class PaymentsService {
     razorpayPaymentId: string,
     signature: string,
   ) {
-    const payment = await this.prisma.payment.findFirst({
+    const payment = await prisma.payment.findFirst({
       where: { gateway_id: razorpayOrderId },
     });
 
     if (!payment) {
-      throw new BadRequestException('Payment not found');
+      const error: any = new Error('Payment not found');
+      error.status = 400;
+      throw error;
     }
 
-    return (this.prisma as any).$transaction(async (tx: any) => {
+    return prisma.$transaction(async (tx) => {
       // 1. Update Payment status
       await tx.payment.update({
         where: { id: payment.id },
@@ -71,3 +67,5 @@ export class PaymentsService {
     });
   }
 }
+
+export const paymentsService = new PaymentsService();

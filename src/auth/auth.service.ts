@@ -1,22 +1,14 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  BadRequestException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { UsersService } from '../users/users.service';
+import jwt from 'jsonwebtoken';
+import { usersService } from '../users/users.service';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
+import { redisClient } from '../common/redis/redis.client';
 
-@Injectable()
 export class AuthService {
-  constructor(
-    private usersService: UsersService,
-    private jwtService: JwtService,
-  ) {}
+  private readonly jwtSecret = process.env.JWT_SECRET || 'super-secret-key';
 
   async validateUser(email: string, pass: string): Promise<any> {
-    const user = await this.usersService.findOne({ email });
+    const user = await usersService.findOne({ email });
     if (user && (await bcrypt.compare(pass, user.password))) {
       const { password, ...result } = user;
       return result;
@@ -31,7 +23,7 @@ export class AuthService {
       role: user.role,
     };
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: jwt.sign(payload, this.jwtSecret, { expiresIn: '1d' }),
       user: {
         id: user.id,
         name: user.name,
@@ -44,17 +36,93 @@ export class AuthService {
   async register(registrationData: any) {
     const { name, email, phone, password, role } = registrationData;
 
-    // Default role is USER if not specified,
-    // though we should restrict who can register as ADMIN/CHEF later or via different flows.
-    const user = await this.usersService.create({
-      name,
-      email,
-      phone,
-      password,
-      role: role || Role.USER,
-    });
+    try {
+      const user = await usersService.create({
+        name,
+        email,
+        phone,
+        password,
+        role: role || Role.USER,
+      });
 
-    const { password: _, ...result } = user;
-    return result;
+      const { password: _, ...result } = user;
+      return result;
+    } catch (error: any) {
+      if (error.status === 409) {
+        const err: any = new Error(error.message);
+        err.status = 409;
+        throw err;
+      }
+      throw error;
+    }
+  }
+
+  async sendOtp(phone: string) {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+    // Store in Redis with TTL 5 minutes (300 seconds)
+    await redisClient.setex(`OTP:${phone}`, 300, otp);
+    
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const fromPhone = process.env.TWILIO_PHONE_NUMBER;
+
+    if (accountSid && authToken && fromPhone) {
+      const message = `Your GoHomeyy verification code is ${otp}. Valid for 5 min.`;
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+      const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+      
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${basicAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: new URLSearchParams({
+            To: phone,      // Twilio requires country code (e.g., +918688261165)
+            From: fromPhone, 
+            Body: message
+          })
+        });
+        const data = await response.json();
+        console.log('[Twilio Response]:', data);
+      } catch (err) {
+        console.error('[Twilio Error]:', err);
+      }
+    } else {
+      console.log(`[Mock SMS] Sending OTP ${otp} to phone ${phone}`);
+    }
+    
+    return { message: 'OTP sent successfully' };
+  }
+
+  async verifyOtp(phone: string, otp: string) {
+    const storedOtp = await redisClient.get(`OTP:${phone}`);
+    
+    if (!storedOtp || storedOtp !== otp) {
+      const err: any = new Error('Invalid or expired OTP');
+      err.status = 400;
+      throw err;
+    }
+    
+    // Clear OTP after successful validation
+    await redisClient.del(`OTP:${phone}`);
+    
+    const user = await usersService.findOne({ phone });
+    if (!user) {
+      return {
+        isNewUser: true,
+        phone,
+        message: 'Proceed to registration'
+      };
+    }
+    
+    const result = await this.login(user);
+    return {
+      isNewUser: false,
+      ...result
+    };
   }
 }
+
+export const authService = new AuthService();

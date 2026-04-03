@@ -43,6 +43,15 @@ enum DeliveryStatus {
   FAILED
 }
 
+enum ChefApplicationStatus {
+  DRAFT
+  PENDING_REVIEW
+  PHONE_VETTING
+  KITCHEN_AUDIT
+  APPROVED
+  REJECTED
+}
+
 model User {
   id         String   @id @default(uuid())
   name       String
@@ -68,6 +77,26 @@ model Chef {
   trust_tier  Int      @default(1)
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
+
+  // Step 1: Personal Info
+  primary_cuisine String?
+
+  // Step 2: Kitchen Space
+  kitchen_name    String?
+  kitchen_address String?
+  latitude        Float?
+  longitude       Float?
+  max_capacity    Int?       @default(10)
+  appliances      String[]   @default([])
+
+  // Step 3: Security & Verification
+  government_id_url      String?
+  food_safety_cert_url   String?
+  kitchen_photo_url      String?
+
+  // Registration tracking
+  application_status ChefApplicationStatus @default(DRAFT)
+  registration_step  Int                   @default(1)
 
   followers   Follow[]     @relation("ChefFollowers")
   meals       DailyMeal[]

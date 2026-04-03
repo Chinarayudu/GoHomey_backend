@@ -1,22 +1,16 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { prisma } from '../prisma/prisma.service';
 import { DailyMeal, Prisma } from '@prisma/client';
 
-@Injectable()
 export class MealsService {
-  constructor(private prisma: PrismaService) {}
-
   async create(chefId: string, data: any): Promise<any> {
-    const chef = await this.prisma.chef.findUnique({ where: { id: chefId } });
+    const chef = await prisma.chef.findUnique({ where: { id: chefId } });
     if (!chef) {
-      throw new NotFoundException('Chef profile not found');
+      const error: any = new Error('Chef profile not found');
+      error.status = 404;
+      throw error;
     }
 
-    return this.prisma.dailyMeal.create({
+    return prisma.dailyMeal.create({
       data: {
         ...data,
         chef_id: chefId,
@@ -27,7 +21,7 @@ export class MealsService {
 
   async findAll(query: { date?: string; chefId?: string }) {
     const { date, chefId } = query;
-    return this.prisma.dailyMeal.findMany({
+    return prisma.dailyMeal.findMany({
       where: {
         chef_id: chefId,
         date: date ? new Date(date) : undefined,
@@ -45,12 +39,14 @@ export class MealsService {
   }
 
   async findOne(id: string): Promise<any> {
-    const meal = await this.prisma.dailyMeal.findUnique({
+    const meal = await prisma.dailyMeal.findUnique({
       where: { id },
       include: { chef: true },
     });
     if (!meal) {
-      throw new NotFoundException('Meal not found');
+      const error: any = new Error('Meal not found');
+      error.status = 404;
+      throw error;
     }
     return meal;
   }
@@ -58,10 +54,14 @@ export class MealsService {
   async update(id: string, chefId: string, data: any): Promise<any> {
     const meal = await this.findOne(id);
     if (!meal) {
-      throw new NotFoundException('Meal not found');
+      const error: any = new Error('Meal not found');
+      error.status = 404;
+      throw error;
     }
     if (meal.chef_id !== chefId) {
-      throw new ForbiddenException('You can only update your own meals');
+      const error: any = new Error('You can only update your own meals');
+      error.status = 403;
+      throw error;
     }
 
     // If slots_total is updated, we might need to adjust slots_remaining
@@ -70,7 +70,7 @@ export class MealsService {
       data.slots_remaining = meal.slots_remaining + diff;
     }
 
-    return this.prisma.dailyMeal.update({
+    return prisma.dailyMeal.update({
       where: { id },
       data,
     });
@@ -79,8 +79,12 @@ export class MealsService {
   async remove(id: string, chefId: string): Promise<void> {
     const meal = await this.findOne(id);
     if (!meal || meal.chef_id !== chefId) {
-      throw new ForbiddenException('You can only delete your own meals');
+      const error: any = new Error('You can only delete your own meals');
+      error.status = 403;
+      throw error;
     }
-    await this.prisma.dailyMeal.delete({ where: { id } });
+    await prisma.dailyMeal.delete({ where: { id } });
   }
 }
+
+export const mealsService = new MealsService();
