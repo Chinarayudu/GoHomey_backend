@@ -23,7 +23,7 @@ export class AuthService {
       role: user.role,
     };
     return {
-      access_token: jwt.sign(payload, this.jwtSecret, { expiresIn: '1d' }),
+      token: jwt.sign(payload, this.jwtSecret, { expiresIn: '1d' }),
       user: {
         id: user.id,
         name: user.name,
@@ -61,7 +61,7 @@ export class AuthService {
     const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
     // Store in Redis with TTL 5 minutes (300 seconds)
     await redisClient.setex(`OTP:${phone}`, 300, otp);
-    
+
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const fromPhone = process.env.TWILIO_PHONE_NUMBER;
@@ -70,7 +70,7 @@ export class AuthService {
       const message = `Your GoHomeyy verification code is ${otp}. Valid for 5 min.`;
       const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
       const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
-      
+
       try {
         const response = await fetch(url, {
           method: 'POST',
@@ -80,7 +80,7 @@ export class AuthService {
           },
           body: new URLSearchParams({
             To: phone,      // Twilio requires country code (e.g., +918688261165)
-            From: fromPhone, 
+            From: fromPhone,
             Body: message
           })
         });
@@ -92,39 +92,44 @@ export class AuthService {
     } else {
       console.log(`[Mock SMS] Sending OTP ${otp} to phone ${phone}`);
     }
-    
+
     return { message: 'OTP sent successfully' };
   }
 
   async verifyOtp(phone: string, otp: string) {
     const storedOtp = await redisClient.get(`OTP:${phone}`);
-    
+
     if (!storedOtp || storedOtp !== otp) {
       const err: any = new Error('Invalid or expired OTP');
       err.status = 400;
       throw err;
     }
-    
+
     // Clear OTP after successful validation
     await redisClient.del(`OTP:${phone}`);
-    
-    let user = await usersService.findOne({ phone });
-    let isNewUser = false;
+
+    const user = await usersService.findOne({ phone });
 
     if (!user) {
-      // Auto-register the user with placeholder values since it's an OTP-only flow
-      user = await usersService.create({
-        name: `User ${phone.slice(-4)}`,
-        email: `${phone.replace('+', '')}@temp.gohomeyy.com`,
+      // User doesn't exist, prompt for registration instead of creating dummy in DB
+      // We issue a temporary token so the frontend can maintain auth state during registration
+      const tempToken = jwt.sign(
+        { phone: phone, role: Role.USER, isRegistrationPending: true },
+        this.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      return {
+        isNewUser: true,
         phone: phone,
-        password: Math.random().toString(36).slice(-10), // Random secure password
-      });
-      isNewUser = true;
+        token: tempToken,
+        message: 'OTP verified successfully. Please complete your registration.'
+      };
     }
-    
+
     const result = await this.login(user);
     return {
-      isNewUser,
+      isNewUser: false,
       ...result
     };
   }
