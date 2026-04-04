@@ -108,18 +108,23 @@ export class AuthService {
     // Clear OTP after successful validation
     await redisClient.del(`OTP:${phone}`);
     
-    const user = await usersService.findOne({ phone });
+    let user = await usersService.findOne({ phone });
+    let isNewUser = false;
+
     if (!user) {
-      return {
-        isNewUser: true,
-        phone,
-        message: 'Proceed to registration'
-      };
+      // Auto-register the user with placeholder values since it's an OTP-only flow
+      user = await usersService.create({
+        name: `User ${phone.slice(-4)}`,
+        email: `${phone.replace('+', '')}@temp.gohomeyy.com`,
+        phone: phone,
+        password: Math.random().toString(36).slice(-10), // Random secure password
+      });
+      isNewUser = true;
     }
     
     const result = await this.login(user);
     return {
-      isNewUser: false,
+      isNewUser,
       ...result
     };
   }
