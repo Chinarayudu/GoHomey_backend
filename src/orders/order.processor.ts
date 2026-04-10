@@ -1,49 +1,59 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Worker, Job } from 'bullmq';
+import { prisma } from '../prisma/prisma.service';
+import { getRedisConnection } from '../common/queues/queues';
 
-@Processor('orders')
-export class OrderProcessor extends WorkerHost {
-  private readonly logger = new Logger(OrderProcessor.name);
+export const setupOrdersWorker = () => {
+  const worker = new Worker(
+    'orders',
+    async (job: Job) => {
+      console.log(`Processing job ${job.id} of type ${job.name}`);
 
-  constructor(private prisma: PrismaService) {
-    super();
-  }
+      switch (job.name) {
+        case 'send-order-notification':
+          return handleSendOrderNotification(job.data);
+        case 'trigger-delivery':
+          return handleTriggerDelivery(job.data);
+        case 'update-analytics':
+          return handleUpdateAnalytics(job.data);
+        case 'send-order-status-update':
+           return handleSendOrderStatusUpdate(job.data);
+        default:
+          console.warn(`Unknown job type: ${job.name}`);
+      }
+    },
+    { connection: getRedisConnection() }
+  );
 
-  async process(job: Job<any, any, string>): Promise<any> {
-    this.logger.log(`Processing job ${job.id} of type ${job.name}`);
+  worker.on('completed', (job) => {
+    console.log(`Job ${job.id} completed!`);
+  });
 
-    switch (job.name) {
-      case 'send-order-notification':
-        return this.handleSendOrderNotification(job.data);
-      case 'trigger-delivery':
-        return this.handleTriggerDelivery(job.data);
-      case 'update-analytics':
-        return this.handleUpdateAnalytics(job.data);
-      default:
-        this.logger.warn(`Unknown job type: ${job.name}`);
-    }
-  }
+  worker.on('failed', (job, err) => {
+    console.error(`Job ${job?.id} failed with ${err.message}`);
+  });
 
-  private async handleSendOrderNotification(data: { orderId: string }) {
-    this.logger.log(`Sending notification for order ${data.orderId}`);
-    // Here we would call NotificationService / FCM
-    return { success: true };
-  }
+  return worker;
+};
 
-  private async handleTriggerDelivery(data: { orderId: string }) {
-    this.logger.log(`Triggering delivery for order ${data.orderId}`);
-    // Here we would call DeliveryService / External Delivery API
-    return { success: true };
-  }
+async function handleSendOrderNotification(data: { orderId: string }) {
+  console.log(`Sending notification for order ${data.orderId}`);
+  // Here we would call Notification Service logic
+  return { success: true };
+}
 
-  private async handleUpdateAnalytics(data: {
-    orderId: string;
-    amount: number;
-  }) {
-    this.logger.log(`Updating analytics for order ${data.orderId}`);
-    // Here we would update some analytics table or external service
-    return { success: true };
-  }
+async function handleTriggerDelivery(data: { orderId: string }) {
+  console.log(`Triggering delivery for order ${data.orderId}`);
+  // Here we would call Delivery Service logic
+  return { success: true };
+}
+
+async function handleUpdateAnalytics(data: { orderId: string; amount: number }) {
+  console.log(`Updating analytics for order ${data.orderId}`);
+  // Here we would update some analytics table
+  return { success: true };
+}
+
+async function handleSendOrderStatusUpdate(data: { orderId: string; userId: string; status: string }) {
+  console.log(`Notifying user ${data.userId} that order ${data.orderId} is now ${data.status}`);
+  return { success: true };
 }

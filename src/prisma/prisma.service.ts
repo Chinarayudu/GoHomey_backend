@@ -1,38 +1,31 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
-@Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
-  constructor() {
-    const connectionString =
-      process.env.DATABASE_URL ||
-      'postgresql://postgres:postgres@localhost:5432/homey_db?schema=public';
-    const pool = new Pool({ connectionString });
-    const adapter = new PrismaPg(pool);
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL is not defined in the environment variables');
+}
 
-    super({
-      // @ts-ignore
-      adapter: adapter,
-    });
-  }
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool as any);
 
-  async onModuleInit() {
-    try {
-      await this.$connect();
-      console.log(
-        'Successfully connected to the database via Prisma 7 + PostgreSQL Adapter.',
-      );
-    } catch (error) {
-      console.error('Failed to connect to Prisma:', error);
-    }
-  }
+export const prisma = new PrismaClient({
+  // @ts-ignore
+  adapter: adapter,
+});
 
-  async onModuleDestroy() {
-    await this.$disconnect();
+export async function connectPrisma() {
+  try {
+    await prisma.$connect();
+    console.log('Successfully connected to the database via Prisma 7 + PostgreSQL Adapter.');
+  } catch (error) {
+    console.error('Failed to connect to Prisma:', error);
+    process.exit(1);
   }
+}
+
+export async function disconnectPrisma() {
+  await prisma.$disconnect();
 }

@@ -1,21 +1,16 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { prisma } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
-@Injectable()
 export class PantryService {
-  constructor(private prisma: PrismaService) {}
-
   async create(chefId: string, data: any): Promise<any> {
-    const chef = await this.prisma.chef.findUnique({ where: { id: chefId } });
+    const chef = await prisma.chef.findUnique({ where: { id: chefId } });
     if (!chef) {
-      throw new NotFoundException('Chef profile not found');
+      const error: any = new Error('Chef profile not found');
+      error.status = 404;
+      throw error;
     }
 
-    return this.prisma.pantryItem.create({
+    return prisma.pantryItem.create({
       data: {
         ...data,
         chef_id: chefId,
@@ -25,7 +20,7 @@ export class PantryService {
 
   async findAll(query: { category?: string; chefId?: string }) {
     const { category, chefId } = query;
-    return this.prisma.pantryItem.findMany({
+    return prisma.pantryItem.findMany({
       where: {
         chef_id: chefId,
         category: category,
@@ -43,12 +38,14 @@ export class PantryService {
   }
 
   async findOne(id: string): Promise<any> {
-    const item = await this.prisma.pantryItem.findUnique({
+    const item = await prisma.pantryItem.findUnique({
       where: { id },
       include: { chef: true },
     });
     if (!item) {
-      throw new NotFoundException('Pantry item not found');
+      const error: any = new Error('Pantry item not found');
+      error.status = 404;
+      throw error;
     }
     return item;
   }
@@ -56,13 +53,17 @@ export class PantryService {
   async update(id: string, chefId: string, data: any): Promise<any> {
     const item = await this.findOne(id);
     if (!item) {
-      throw new NotFoundException('Pantry item not found');
+      const error: any = new Error('Pantry item not found');
+      error.status = 404;
+      throw error;
     }
     if (item.chef_id !== chefId) {
-      throw new ForbiddenException('You can only update your own items');
+      const error: any = new Error('You can only update your own items');
+      error.status = 403;
+      throw error;
     }
 
-    return this.prisma.pantryItem.update({
+    return prisma.pantryItem.update({
       where: { id },
       data,
     });
@@ -71,8 +72,12 @@ export class PantryService {
   async remove(id: string, chefId: string): Promise<void> {
     const item = await this.findOne(id);
     if (!item || item.chef_id !== chefId) {
-      throw new ForbiddenException('You can only delete your own items');
+      const error: any = new Error('You can only delete your own items');
+      error.status = 403;
+      throw error;
     }
-    await this.prisma.pantryItem.delete({ where: { id } });
+    await prisma.pantryItem.delete({ where: { id } });
   }
 }
+
+export const pantryService = new PantryService();
