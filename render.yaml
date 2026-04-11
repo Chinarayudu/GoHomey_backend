@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     region: ohio # or oregon, frankfurt, etc.
-    buildCommand: npm install --include=dev && npx prisma db push && npx prisma generate && npm run build
+    buildCommand: npm install --include=dev && npx prisma db push --accept-data-loss && npx prisma generate && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
