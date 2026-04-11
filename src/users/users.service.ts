@@ -9,6 +9,13 @@ export class UsersService {
     });
   }
 
+  async findOneWithChef(where: Prisma.UserWhereUniqueInput): Promise<any> {
+    return prisma.user.findUnique({
+      where,
+      include: { chef: true },
+    });
+  }
+
   async create(data: any): Promise<User> {
     const existingUser = await prisma.user.findFirst({
       where: {
