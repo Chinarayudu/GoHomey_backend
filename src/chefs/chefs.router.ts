@@ -129,8 +129,8 @@ chefsRouter.post(
   validationMiddleware(ChefRegisterStep2Dto),
   async (req: Request, res: Response, next) => {
     try {
-      const userId = (req.user as any).id;
-      const result = await chefsService.registerStep2(userId, req.body);
+      const user = req.user as any;
+      const result = await chefsService.registerStep2(user.id, req.body, user.phone);
       res.status(200).json({
         status: 'success',
         message: 'Step 2 completed. Proceed to Step 3.',
@@ -194,7 +194,7 @@ chefsRouter.post(
   ]),
   async (req: Request, res: Response, next) => {
     try {
-      const userId = (req.user as any).id;
+      const user = req.user as any;
       const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
       if (!files?.government_id?.[0] || !files?.food_safety_cert?.[0] || !files?.kitchen_photo?.[0]) {
@@ -210,7 +210,7 @@ chefsRouter.post(
         kitchen_photo_url: `/uploads/chef-documents/${files.kitchen_photo[0].filename}`,
       };
 
-      const result = await chefsService.registerStep3(userId, fileUrls);
+      const result = await chefsService.registerStep3(user.id, fileUrls, user.phone);
       res.status(200).json({
         status: 'success',
         message: 'Application submitted! Our concierge team will review your documents within 24 hours.',
@@ -243,8 +243,8 @@ chefsRouter.get(
   jwtAuth,
   async (req: Request, res: Response, next) => {
     try {
-      const userId = (req.user as any).id;
-      const result = await chefsService.getRegistrationStatus(userId);
+      const user = req.user as any;
+      const result = await chefsService.getRegistrationStatus(user.id, user.phone);
       res.json({
         status: 'success',
         data: result,

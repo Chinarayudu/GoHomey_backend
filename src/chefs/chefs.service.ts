@@ -1,62 +1,54 @@
 import { prisma } from '../prisma/prisma.service';
 import { Chef, Prisma, Role, ChefApplicationStatus } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 export class ChefsService {
 
   /**
    * Step 1: Create chef profile with personal info + cuisine
-   * Called after OTP verification when user wants to become a chef.
+   * Called after OTP verification for Chef.
    */
-  async registerStep1(userId: string, data: {
+  async registerStep1(idFromToken: string | undefined, data: {
     full_name: string;
     email: string;
     mobile_number: string;
     primary_cuisine: string;
   }): Promise<Chef> {
-    // Check if user exists
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      const error: any = new Error('User not found');
-      error.status = 404;
-      throw error;
+    let chef;
+
+    // 1. Try to find the chef by ID or Phone
+    if (idFromToken) {
+      chef = await prisma.chef.findUnique({ where: { id: idFromToken } });
     }
 
-    // Check if chef profile already exists
-    const existingChef = await prisma.chef.findFirst({
-      where: { user_id: userId },
-    });
+    if (!chef) {
+      chef = await prisma.chef.findUnique({ where: { phone: data.mobile_number } });
+    }
 
-    if (existingChef) {
-      // If already exists, update step 1 fields (allow re-editing)
-      return prisma.chef.update({
-        where: { id: existingChef.id },
+    // 2. Create or Update Chef record
+    if (!chef) {
+      // Create Chef with a random placeholder password for now
+      const placeholderPassword = await bcrypt.hash(Math.random().toString(36), 10);
+      return prisma.chef.create({
         data: {
+          name: data.full_name,
+          email: data.email,
+          phone: data.mobile_number,
+          password: placeholderPassword,
           primary_cuisine: data.primary_cuisine,
-          registration_step: Math.max(existingChef.registration_step, 1),
+          registration_step: 1,
         },
       });
     }
 
-    // Update user's name, email if provided (they may differ from OTP registration)
-    await prisma.user.update({
-      where: { id: userId },
+    // Update existing Chef
+    return prisma.chef.update({
+      where: { id: chef.id },
       data: {
         name: data.full_name,
         email: data.email,
-        phone: data.mobile_number,
-        role: Role.CHEF,
-      },
-    });
-
-    // Create new chef profile
-    return prisma.chef.create({
-      data: {
-        user_id: userId,
         primary_cuisine: data.primary_cuisine,
-        is_verified: false,
-        trust_tier: 1,
-        application_status: ChefApplicationStatus.DRAFT,
-        registration_step: 1,
+        registration_step: Math.max(chef.registration_step, 1),
       },
     });
   }
@@ -64,17 +56,23 @@ export class ChefsService {
   /**
    * Step 2: Kitchen space details
    */
-  async registerStep2(userId: string, data: {
+  async registerStep2(chefId: string | undefined, data: {
     kitchen_name: string;
     kitchen_address: string;
     latitude: number;
     longitude: number;
     max_capacity: number;
     appliances: string[];
-  }): Promise<Chef> {
-    const chef = await prisma.chef.findFirst({
-      where: { user_id: userId },
-    });
+  }, phoneFallback?: string): Promise<Chef> {
+    let chef;
+    
+    if (chefId) {
+      chef = await prisma.chef.findUnique({ where: { id: chefId } });
+    }
+    
+    if (!chef && phoneFallback) {
+      chef = await prisma.chef.findUnique({ where: { phone: phoneFallback } });
+    }
 
     if (!chef) {
       const error: any = new Error('Chef profile not found. Complete Step 1 first.');
@@ -97,17 +95,22 @@ export class ChefsService {
   }
 
   /**
-   * Step 3: Document uploads (Government ID, Food Safety Cert, Kitchen Photo)
-   * After this step, the application status changes to PENDING_REVIEW
+   * Step 3: Document uploads
    */
-  async registerStep3(userId: string, files: {
+  async registerStep3(chefId: string | undefined, files: {
     government_id_url?: string;
     food_safety_cert_url?: string;
     kitchen_photo_url?: string;
-  }): Promise<Chef> {
-    const chef = await prisma.chef.findFirst({
-      where: { user_id: userId },
-    });
+  }, phoneFallback?: string): Promise<Chef> {
+    let chef;
+
+    if (chefId) {
+      chef = await prisma.chef.findUnique({ where: { id: chefId } });
+    }
+
+    if (!chef && phoneFallback) {
+      chef = await prisma.chef.findUnique({ where: { phone: phoneFallback } });
+    }
 
     if (!chef) {
       const error: any = new Error('Chef profile not found. Complete Step 1 first.');
@@ -134,13 +137,18 @@ export class ChefsService {
   }
 
   /**
-   * Get the current registration status / progress for a user
+   * Get registration status for a chef
    */
-  async getRegistrationStatus(userId: string) {
-    const chef = await prisma.chef.findFirst({
-      where: { user_id: userId },
-      include: { user: true },
-    });
+  async getRegistrationStatus(chefId: string | undefined, phoneFallback?: string) {
+    let chef;
+
+    if (chefId) {
+      chef = await prisma.chef.findUnique({ where: { id: chefId } });
+    }
+
+    if (!chef && phoneFallback) {
+      chef = await prisma.chef.findUnique({ where: { phone: phoneFallback } });
+    }
 
     if (!chef) {
       return {
@@ -156,16 +164,16 @@ export class ChefsService {
       application_status: chef.application_status,
       chef_id: chef.id,
       data: {
-        // Step 1
+        name: chef.name,
+        email: chef.email,
+        phone: chef.phone,
         primary_cuisine: chef.primary_cuisine,
-        // Step 2
         kitchen_name: chef.kitchen_name,
         kitchen_address: chef.kitchen_address,
         latitude: chef.latitude,
         longitude: chef.longitude,
         max_capacity: chef.max_capacity,
         appliances: chef.appliances,
-        // Step 3
         government_id_url: chef.government_id_url,
         food_safety_cert_url: chef.food_safety_cert_url,
         kitchen_photo_url: chef.kitchen_photo_url,
@@ -176,14 +184,17 @@ export class ChefsService {
   async findOne(id: string): Promise<Chef | null> {
     return prisma.chef.findUnique({
       where: { id },
-      include: { user: true },
+    });
+  }
+
+  async findByPhone(phone: string): Promise<Chef | null> {
+    return prisma.chef.findUnique({
+      where: { phone },
     });
   }
 
   async findAll() {
-    return prisma.chef.findMany({
-      include: { user: true },
-    });
+    return prisma.chef.findMany();
   }
 
   async verifyChef(id: string, isVerified: boolean, trustTier?: number) {

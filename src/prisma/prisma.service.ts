@@ -8,12 +8,19 @@ if (!connectionString) {
   throw new Error('DATABASE_URL is not defined in the environment variables');
 }
 
-const pool = new Pool({ connectionString });
+// Add SSL options for Neon
+const pool = new Pool({ 
+  connectionString,
+  ssl: {
+    rejectUnauthorized: false,
+  }
+});
 const adapter = new PrismaPg(pool as any);
 
 export const prisma = new PrismaClient({
   // @ts-ignore
   adapter: adapter,
+  log: ['query', 'info', 'warn', 'error'],
 });
 
 export async function connectPrisma() {

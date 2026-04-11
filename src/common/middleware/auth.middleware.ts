@@ -13,7 +13,13 @@ passport.use(
   new JwtStrategy(options, async (payload, done) => {
     try {
       if (payload) {
-        return done(null, { id: payload.sub, email: payload.email, role: payload.role });
+        return done(null, { 
+          id: payload.sub, 
+          email: payload.email, 
+          phone: payload.phone,
+          role: payload.role,
+          isRegistrationPending: payload.isRegistrationPending
+        });
       }
       return done(null, false);
     } catch (error) {

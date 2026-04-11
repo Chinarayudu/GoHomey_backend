@@ -3,6 +3,7 @@ import { usersService } from '../users/users.service';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 import { redisClient } from '../common/redis/redis.client';
+import { chefsService } from '../chefs/chefs.service';
 
 export class AuthService {
   private readonly jwtSecret = process.env.JWT_SECRET || 'super-secret-key';
@@ -20,6 +21,7 @@ export class AuthService {
     const payload = {
       sub: user.id,
       email: user.email,
+      phone: user.phone,
       role: user.role,
     };
     return {
@@ -108,11 +110,18 @@ export class AuthService {
     // Clear OTP after successful validation
     await redisClient.del(`OTP:${phone}`);
 
-    const user = await usersService.findOne({ phone });
+    // Check User table first
+    let person = await usersService.findOne({ phone });
+    let isChef = false;
 
-    if (!user) {
-      // User doesn't exist, prompt for registration instead of creating dummy in DB
-      // We issue a temporary token so the frontend can maintain auth state during registration
+    if (!person) {
+      // Check Chef table
+      person = await chefsService.findByPhone(phone);
+      if (person) isChef = true;
+    }
+
+    if (!person) {
+      // New user (neither standard user nor chef yet)
       const tempToken = jwt.sign(
         { phone: phone, role: Role.USER, isRegistrationPending: true },
         this.jwtSecret,
@@ -127,10 +136,17 @@ export class AuthService {
       };
     }
 
-    const result = await this.login(user);
+    const result = await this.login(person);
+    const chefStatus = isChef ? (person as any).application_status : null;
+
     return {
       isNewUser: false,
-      ...result
+      isChef,
+      registrationStep: isChef ? (person as any).registration_step : null,
+      applicationStatus: chefStatus,
+      redirectToStatus: isChef && chefStatus !== 'DRAFT',
+      ...result,
+      phone: person.phone
     };
   }
 }

@@ -62,15 +62,17 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  chef       Chef?
   follows    Follow[] @relation("UserFollows")
   orders     Order[]
 }
 
 model Chef {
   id          String   @id @default(uuid())
-  user_id     String   @unique
-  user        User     @relation(fields: [user_id], references: [id])
+  name        String
+  phone       String   @unique
+  email       String   @unique
+  password    String
+  role        Role     @default(CHEF)
   bio         String?
   rating      Float    @default(0.0)
   is_verified Boolean  @default(false)
