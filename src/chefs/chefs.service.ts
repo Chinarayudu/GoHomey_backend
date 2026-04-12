@@ -223,6 +223,113 @@ export class ChefsService {
       data,
     });
   }
+
+  /**
+   * Get dashboard statistics for a chef
+   */
+  async getDashboardData(chefId: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // 1. Calculate earnings today (Completed orders)
+    const ordersToday = await prisma.order.findMany({
+      where: {
+        chef_id: chefId,
+        created_at: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+      include: {
+        payment: true,
+      },
+    });
+
+    const earningsToday = ordersToday
+      .filter((o) => o.status === 'DELIVERED' || o.status === 'OUT_FOR_DELIVERY' || o.status === 'PREPARING') // In real scenario, only DELIVERED might count for earnings, but Figma shows total revenue today
+      .reduce((sum, o) => sum + o.total_price, 0);
+
+    // 2. Count active slots
+    const activeSlots = await prisma.dailyMeal.findMany({
+      where: {
+        chef_id: chefId,
+        date: {
+          gte: today,
+        },
+        slots_remaining: {
+          gt: 0,
+        },
+      },
+      orderBy: {
+        date: 'asc',
+      },
+    });
+
+    return {
+      earnings_today: earningsToday,
+      orders_count_today: ordersToday.length,
+      active_slots_count: activeSlots.length,
+      active_slots: activeSlots.map((slot) => ({
+        id: slot.id,
+        meal_name: slot.meal_name,
+        type: slot.type,
+        service_window: slot.service_window,
+        image_url: slot.image_url,
+        slots_remaining: slot.slots_remaining,
+        slots_total: slot.slots_total,
+        price: slot.price,
+        date: slot.date,
+      })),
+    };
+  }
+
+  /**
+   * Get detailed profile including bank info
+   */
+  async getProfile(chefId: string) {
+    return prisma.chef.findUnique({
+      where: { id: chefId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        bio: true,
+        rating: true,
+        is_verified: true,
+        primary_cuisine: true,
+        kitchen_name: true,
+        kitchen_address: true,
+        max_capacity: true,
+        bank_name: true,
+        bank_account_number: true,
+        ifsc_code: true,
+        kitchen_photo_url: true,
+      },
+    });
+  }
+
+  /**
+   * Update chef profile and bank details
+   */
+  async updateProfile(chefId: string, data: any) {
+    return prisma.chef.update({
+      where: { id: chefId },
+      data: {
+        name: data.name,
+        email: data.email,
+        bio: data.bio,
+        kitchen_name: data.kitchen_name,
+        kitchen_address: data.kitchen_address,
+        bank_name: data.bank_name,
+        bank_account_number: data.bank_account_number,
+        ifsc_code: data.ifsc_code,
+      },
+    });
+  }
 }
 
 export const chefsService = new ChefsService();

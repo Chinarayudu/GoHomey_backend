@@ -2,15 +2,26 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(process.cwd(), 'uploads', 'chef-documents');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// Ensure uploads directories exist
+const chefDocsDir = path.join(process.cwd(), 'uploads', 'chef-documents');
+const mealsDir = path.join(process.cwd(), 'uploads', 'meals');
+const proofsDir = path.join(process.cwd(), 'uploads', 'proofs');
+
+[chefDocsDir, mealsDir, proofsDir].forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadsDir);
+  destination: (req, file, cb) => {
+    if (file.fieldname === 'meal_image') {
+      cb(null, mealsDir);
+    } else if (file.fieldname === 'batch_proof') {
+      cb(null, proofsDir);
+    } else {
+      cb(null, chefDocsDir);
+    }
   },
   filename: (_req, file, cb) => {
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
@@ -38,5 +49,21 @@ export const chefDocumentUpload = multer({
   fileFilter,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max per file
+  },
+});
+
+export const mealImageUpload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max for dish images
+  },
+});
+
+export const batchProofUpload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max for batch proof
   },
 });

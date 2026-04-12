@@ -4,7 +4,7 @@ import { validationMiddleware } from '../common/middleware/validation.middleware
 import { CreateMealOrderDto, CreatePantryOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
-
+import { prisma } from '../prisma/prisma.service';
 const ordersRouter = Router();
 
 /**
@@ -130,12 +130,19 @@ ordersRouter.get('/user', jwtAuth, async (req, res, next) => {
  */
 // GET /api/v1/orders/chef
 ordersRouter.get('/chef', jwtAuth, checkRoles(Role.CHEF), async (req, res, next) => {
-
   try {
-    // In NestJS, they had req.user.chefId || req.user.id.
-    // Assuming chefId is attached or we find it.
-    const result = await ordersService.findChefOrders((req.user as any).id);
-    res.json(result);
+    const user = req.user as any;
+    const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
+    if (!chef) {
+      return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
+    }
+
+    const { statusGroup } = req.query;
+    const result = await ordersService.findChefOrders(chef.id, statusGroup as 'active' | 'completed');
+    res.json({
+      status: 'success',
+      data: result,
+    });
   } catch (error) {
     next(error);
   }

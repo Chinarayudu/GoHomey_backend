@@ -136,13 +136,37 @@ export class OrdersService {
     });
   }
 
-  async findChefOrders(chefId: string) {
+  async findChefOrders(chefId: string, statusGroup?: 'active' | 'completed') {
+    let where: any = { chef_id: chefId };
+
+    if (statusGroup === 'active') {
+      where.status = {
+        in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'],
+      };
+    } else if (statusGroup === 'completed') {
+      where.status = {
+        in: ['DELIVERED', 'CANCELLED', 'REFUNDED'],
+      };
+    }
+
     return prisma.order.findMany({
-      where: { chef_id: chefId },
+      where,
       include: {
-        items: true,
+        items: {
+          include: {
+            daily_meal: true,
+            pantry_item: true,
+            fuel_slot: true,
+          },
+        },
         payment: true,
         delivery: true,
+        user: {
+          select: {
+            name: true,
+            phone: true,
+          },
+        },
       },
       orderBy: { created_at: 'desc' },
     });
