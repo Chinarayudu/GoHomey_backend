@@ -255,6 +255,158 @@ chefsRouter.get(
   }
 );
 
+
+
+// ─── CHEF DASHBOARD & PROFILE ──────────────────────────────────────────────────
+
+/**
+ * @openapi
+ * /chefs/dashboard:
+ *   get:
+ *     summary: Get dashboard statistics for the logged-in chef
+ *     tags: [Chefs]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard data retrieved
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (not a chef)
+ */
+chefsRouter.get(
+  '/dashboard',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req: Request, res: Response, next) => {
+    try {
+      const user = req.user as any;
+      // Find by id (for tokens generated natively as chef) or user_id
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [
+            { id: user.id },
+            { user_id: user.id }
+          ]
+        }
+      });
+
+      if (!chef) {
+        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
+      }
+      
+      const dashboardData = await chefsService.getDashboardData(chef.id);
+      res.json({
+        status: 'success',
+        data: dashboardData,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /chefs/profile:
+ *   get:
+ *     summary: Get chef profile and bank details
+ *     tags: [Chefs]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile data retrieved
+ */
+chefsRouter.get(
+  '/profile',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req: Request, res: Response, next) => {
+    try {
+      const user = req.user as any;
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [
+            { id: user.id },
+            { user_id: user.id }
+          ]
+        }
+      });
+      if (!chef) {
+        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
+      }
+
+      const profile = await chefsService.getProfile(chef.id);
+      res.json({
+        status: 'success',
+        data: profile,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /chefs/profile:
+ *   patch:
+ *     summary: Update chef profile and bank details
+ *     tags: [Chefs]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               email: { type: string }
+ *               bio: { type: string }
+ *               kitchen_name: { type: string }
+ *               kitchen_address: { type: string }
+ *               bank_name: { type: string }
+ *               bank_account_number: { type: string }
+ *               ifsc_code: { type: string }
+ *     responses:
+ *       200:
+ *         description: Profile updated
+ */
+chefsRouter.patch(
+  '/profile',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req: Request, res: Response, next) => {
+    try {
+      const user = req.user as any;
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [
+            { id: user.id },
+            { user_id: user.id }
+          ]
+        }
+      });
+      if (!chef) {
+        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
+      }
+
+      const result = await chefsService.updateProfile(chef.id, req.body);
+      res.json({
+        status: 'success',
+        message: 'Profile updated successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // ─── EXISTING CHEF ENDPOINTS ──────────────────────────────────────────────────
 
 /**
@@ -397,135 +549,6 @@ chefsRouter.patch(
       res.json({
         status: 'success',
         message: `Application status updated to ${req.body.status}`,
-        data: result,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// ─── CHEF DASHBOARD & PROFILE ──────────────────────────────────────────────────
-
-/**
- * @openapi
- * /chefs/dashboard:
- *   get:
- *     summary: Get dashboard statistics for the logged-in chef
- *     tags: [Chefs]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: Dashboard data retrieved
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden (not a chef)
- */
-chefsRouter.get(
-  '/dashboard',
-  jwtAuth,
-  checkRoles(Role.CHEF),
-  async (req: Request, res: Response, next) => {
-    try {
-      const user = req.user as any;
-      const result = await chefsService.getDashboardData(user.id); // Note: Assuming user.id is chef.id or we need to find chef.id by user.id
-      // Wait, in our schema Chef has user_id. Let's find Chef by user_id first if needed.
-      const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
-      if (!chef) {
-        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
-      }
-      
-      const dashboardData = await chefsService.getDashboardData(chef.id);
-      res.json({
-        status: 'success',
-        data: dashboardData,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-/**
- * @openapi
- * /chefs/profile:
- *   get:
- *     summary: Get chef profile and bank details
- *     tags: [Chefs]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: Profile data retrieved
- */
-chefsRouter.get(
-  '/profile',
-  jwtAuth,
-  checkRoles(Role.CHEF),
-  async (req: Request, res: Response, next) => {
-    try {
-      const user = req.user as any;
-      const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
-      if (!chef) {
-        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
-      }
-
-      const profile = await chefsService.getProfile(chef.id);
-      res.json({
-        status: 'success',
-        data: profile,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-/**
- * @openapi
- * /chefs/profile:
- *   patch:
- *     summary: Update chef profile and bank details
- *     tags: [Chefs]
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name: { type: string }
- *               email: { type: string }
- *               bio: { type: string }
- *               kitchen_name: { type: string }
- *               kitchen_address: { type: string }
- *               bank_name: { type: string }
- *               bank_account_number: { type: string }
- *               ifsc_code: { type: string }
- *     responses:
- *       200:
- *         description: Profile updated
- */
-chefsRouter.patch(
-  '/profile',
-  jwtAuth,
-  checkRoles(Role.CHEF),
-  async (req: Request, res: Response, next) => {
-    try {
-      const user = req.user as any;
-      const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
-      if (!chef) {
-        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
-      }
-
-      const result = await chefsService.updateProfile(chef.id, req.body);
-      res.json({
-        status: 'success',
-        message: 'Profile updated successfully',
         data: result,
       });
     } catch (error) {

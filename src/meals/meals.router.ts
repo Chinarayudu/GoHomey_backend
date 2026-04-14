@@ -42,7 +42,14 @@ mealsRouter.post(
   async (req: Request, res: Response, next) => {
     try {
       const user = req.user as any;
-      const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [
+            { id: user.id },
+            { user_id: user.id }
+          ]
+        }
+      });
       
       if (!chef) {
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
@@ -100,7 +107,14 @@ mealsRouter.post(
   async (req: Request, res: Response, next) => {
     try {
       const user = req.user as any;
-      const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [
+            { id: user.id },
+            { user_id: user.id }
+          ]
+        }
+      });
       if (!chef) {
         return res.status(403).json({ status: 'error', message: 'User is not its chef' });
       }
@@ -189,7 +203,14 @@ mealsRouter.get('/:id', async (req, res, next) => {
 mealsRouter.patch('/:id', jwtAuth, checkRoles(Role.CHEF, Role.ADMIN), async (req, res, next) => {
   try {
     const user = req.user as any;
-    const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
+    const chef = await prisma.chef.findFirst({
+      where: {
+        OR: [
+          { id: user.id },
+          { user_id: user.id }
+        ]
+      }
+    });
     if (!chef) {
       return res.status(403).json({ status: 'error', message: 'User is not a chef' });
     }
@@ -204,7 +225,14 @@ mealsRouter.patch('/:id', jwtAuth, checkRoles(Role.CHEF, Role.ADMIN), async (req
 mealsRouter.delete('/:id', jwtAuth, checkRoles(Role.CHEF, Role.ADMIN), async (req, res, next) => {
   try {
     const user = req.user as any;
-    const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
+    const chef = await prisma.chef.findFirst({
+      where: {
+        OR: [
+          { id: user.id },
+          { user_id: user.id }
+        ]
+      }
+    });
     if (!chef) {
       return res.status(403).json({ status: 'error', message: 'User is not a chef' });
     }
