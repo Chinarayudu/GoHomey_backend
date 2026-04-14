@@ -16,17 +16,20 @@ pantryRouter.post(
   validationMiddleware(CreatePantryDto),
   async (req, res, next) => {
     try {
-      // Find the chef profile for the user
-      const userWithChef = await prisma.user.findUnique({
-        where: { id: (req.user as any).id },
-        include: { chef: true },
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [
+            { id: (req.user as any).id },
+            { user_id: (req.user as any).id }
+          ]
+        }
       });
 
-      if (!userWithChef?.chef) {
+      if (!chef) {
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const result = await pantryService.create(userWithChef.chef.id, req.body);
+      const result = await pantryService.create(chef.id, req.body);
       res.status(201).json(result);
     } catch (error) {
       next(error);
@@ -66,16 +69,20 @@ pantryRouter.patch(
   validationMiddleware(UpdatePantryDto),
   async (req, res, next) => {
     try {
-      const userWithChef = await prisma.user.findUnique({
-        where: { id: (req.user as any).id },
-        include: { chef: true },
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [
+            { id: (req.user as any).id },
+            { user_id: (req.user as any).id }
+          ]
+        }
       });
 
-      if (!userWithChef?.chef) {
+      if (!chef) {
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const result = await pantryService.update(req.params.id as string, userWithChef.chef.id, req.body);
+      const result = await pantryService.update(req.params.id as string, chef.id, req.body);
       res.json(result);
     } catch (error) {
       next(error);
@@ -86,16 +93,20 @@ pantryRouter.patch(
 // DELETE /api/v1/pantry/:id
 pantryRouter.delete('/:id', jwtAuth, checkRoles(Role.CHEF), async (req, res, next) => {
   try {
-    const userWithChef = await prisma.user.findUnique({
-      where: { id: (req.user as any).id },
-      include: { chef: true },
+    const chef = await prisma.chef.findFirst({
+      where: {
+        OR: [
+          { id: (req.user as any).id },
+          { user_id: (req.user as any).id }
+        ]
+      }
     });
 
-    if (!userWithChef?.chef) {
+    if (!chef) {
       return res.status(403).json({ status: 'error', message: 'User is not a chef' });
     }
 
-    await pantryService.remove(req.params.id as string, userWithChef.chef.id);
+    await pantryService.remove(req.params.id as string, chef.id);
     res.status(204).send();
   } catch (error) {
     next(error);

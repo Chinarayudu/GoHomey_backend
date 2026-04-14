@@ -13,7 +13,13 @@ const options = {
 passport_1.default.use(new passport_jwt_1.Strategy(options, async (payload, done) => {
     try {
         if (payload) {
-            return done(null, { id: payload.sub, email: payload.email, role: payload.role });
+            return done(null, {
+                id: payload.sub,
+                email: payload.email,
+                phone: payload.phone,
+                role: payload.role,
+                isRegistrationPending: payload.isRegistrationPending
+            });
         }
         return done(null, false);
     }

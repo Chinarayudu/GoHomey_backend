@@ -42,6 +42,7 @@ const users_service_1 = require("../users/users.service");
 const bcrypt = __importStar(require("bcrypt"));
 const client_1 = require("@prisma/client");
 const redis_client_1 = require("../common/redis/redis.client");
+const chefs_service_1 = require("../chefs/chefs.service");
 class AuthService {
     jwtSecret = process.env.JWT_SECRET || 'super-secret-key';
     async validateUser(email, pass) {
@@ -56,10 +57,11 @@ class AuthService {
         const payload = {
             sub: user.id,
             email: user.email,
+            phone: user.phone,
             role: user.role,
         };
         return {
-            access_token: jsonwebtoken_1.default.sign(payload, this.jwtSecret, { expiresIn: '1d' }),
+            token: jsonwebtoken_1.default.sign(payload, this.jwtSecret, { expiresIn: '1d' }),
             user: {
                 id: user.id,
                 name: user.name,
@@ -133,18 +135,32 @@ class AuthService {
             throw err;
         }
         await redis_client_1.redisClient.del(`OTP:${phone}`);
-        const user = await users_service_1.usersService.findOne({ phone });
-        if (!user) {
+        let person = await users_service_1.usersService.findOne({ phone });
+        let isChef = false;
+        if (!person) {
+            person = await chefs_service_1.chefsService.findByPhone(phone);
+            if (person)
+                isChef = true;
+        }
+        if (!person) {
+            const tempToken = jsonwebtoken_1.default.sign({ phone: phone, role: client_1.Role.USER, isRegistrationPending: true }, this.jwtSecret, { expiresIn: '1h' });
             return {
                 isNewUser: true,
-                phone,
-                message: 'Proceed to registration'
+                phone: phone,
+                token: tempToken,
+                message: 'OTP verified successfully. Please complete your registration.'
             };
         }
-        const result = await this.login(user);
+        const result = await this.login(person);
+        const chefStatus = isChef ? person.application_status : null;
         return {
             isNewUser: false,
-            ...result
+            isChef,
+            registrationStep: isChef ? person.registration_step : null,
+            applicationStatus: chefStatus,
+            redirectToStatus: isChef && chefStatus !== 'DRAFT',
+            ...result,
+            phone: person.phone
         };
     }
 }

@@ -134,17 +134,20 @@ subscriptionsRouter.post(
   validationMiddleware(CreateSlotDto),
   async (req, res, next) => {
     try {
-      // Find the chef profile for the user
-      const userWithChef = await prisma.user.findUnique({
-        where: { id: (req.user as any).id },
-        include: { chef: true },
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [
+            { id: (req.user as any).id },
+            { user_id: (req.user as any).id }
+          ]
+        }
       });
 
-      if (!userWithChef?.chef) {
+      if (!chef) {
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const result = await subscriptionsService.createSlot(userWithChef.chef.id, req.body);
+      const result = await subscriptionsService.createSlot(chef.id, req.body);
       res.status(201).json(result);
     } catch (error) {
       next(error);

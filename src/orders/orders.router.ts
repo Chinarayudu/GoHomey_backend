@@ -132,7 +132,14 @@ ordersRouter.get('/user', jwtAuth, async (req, res, next) => {
 ordersRouter.get('/chef', jwtAuth, checkRoles(Role.CHEF), async (req, res, next) => {
   try {
     const user = req.user as any;
-    const chef = await prisma.chef.findUnique({ where: { user_id: user.id } });
+    const chef = await prisma.chef.findFirst({
+      where: {
+        OR: [
+          { id: user.id },
+          { user_id: user.id }
+        ]
+      }
+    });
     if (!chef) {
       return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
     }

@@ -2,7 +2,7 @@ export declare class AuthService {
     private readonly jwtSecret;
     validateUser(email: string, pass: string): Promise<any>;
     login(user: any): Promise<{
-        access_token: string;
+        token: string;
         user: {
             id: any;
             name: any;
@@ -11,8 +11,8 @@ export declare class AuthService {
         };
     }>;
     register(registrationData: any): Promise<{
-        name: string;
         id: string;
+        name: string;
         phone: string;
         email: string;
         role: import(".prisma/client").$Enums.Role;
@@ -25,9 +25,11 @@ export declare class AuthService {
     verifyOtp(phone: string, otp: string): Promise<{
         isNewUser: boolean;
         phone: string;
+        token: string;
         message: string;
     } | {
-        access_token: string;
+        phone: string;
+        token: string;
         user: {
             id: any;
             name: any;
@@ -35,7 +37,10 @@ export declare class AuthService {
             role: any;
         };
         isNewUser: boolean;
-        phone?: undefined;
+        isChef: boolean;
+        registrationStep: any;
+        applicationStatus: any;
+        redirectToStatus: boolean;
         message?: undefined;
     }>;
 }
