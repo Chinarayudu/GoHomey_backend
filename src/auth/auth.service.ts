@@ -112,7 +112,7 @@ export class AuthService {
     await redisClient.del(`OTP:${phone}`);
 
     // Check User table first
-    let person = await usersService.findOne({ phone });
+    let person: any = await usersService.findOne({ phone });
     let isChef = false;
 
     if (!person) {
