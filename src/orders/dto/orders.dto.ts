@@ -20,6 +20,16 @@ export class CreatePantryOrderDto {
   quantity: number;
 }
 
+export class CreateSocialOrderDto {
+  @IsString()
+  @IsNotEmpty()
+  eventId: string;
+
+  @IsNumber()
+  @IsNotEmpty()
+  quantity: number;
+}
+
 export class UpdateOrderStatusDto {
   @IsIn([
     'PENDING',

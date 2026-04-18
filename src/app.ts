@@ -18,6 +18,7 @@ import paymentsRouter from './payments/payments.router';
 import subscriptionsRouter from './subscriptions/subscriptions.router';
 import deliveryRouter from './delivery/delivery.router';
 import adminRouter from './admin/admin.router';
+import socialRouter from './social/social.router';
 
 const app: Express = express();
 
@@ -71,6 +72,7 @@ apiV1Router.use('/payments', paymentsRouter);
 apiV1Router.use('/subscriptions', subscriptionsRouter);
 apiV1Router.use('/delivery', deliveryRouter);
 apiV1Router.use('/admin', adminRouter);
+apiV1Router.use('/social', socialRouter);
 
 // Swagger setup
 apiV1Router.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

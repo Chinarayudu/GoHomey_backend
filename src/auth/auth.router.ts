@@ -8,6 +8,22 @@ const authRouter = Router();
 
 /**
  * @openapi
+ * components:
+ *   schemas:
+ *     RegisterDto:
+ *       type: object
+ *       required: [name, email, phone, password]
+ *       properties:
+ *         name: { type: string }
+ *         email: { type: string, format: email }
+ *         phone: { type: string, example: "+919876543210" }
+ *         password: { type: string }
+ *         gender: { type: string, enum: [MALE, FEMALE, OTHER] }
+ *         role: { type: string, enum: [USER, CHEF, ADMIN] }
+ */
+
+/**
+ * @openapi
  * /auth/register:
  *   post:
  *     summary: Register a new user
@@ -17,21 +33,7 @@ const authRouter = Router();
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *               - firstName
- *               - lastName
- *             properties:
- *               email:
- *                 type: string
- *               password:
- *                 type: string
- *               firstName:
- *                 type: string
- *               lastName:
- *                 type: string
+ *             $ref: '#/components/schemas/RegisterDto'
  *     responses:
  *       201:
  *         description: User successfully registered

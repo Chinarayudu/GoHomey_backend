@@ -36,7 +36,7 @@ export class AuthService {
   }
 
   async register(registrationData: any) {
-    const { name, email, phone, password, role } = registrationData;
+    const { name, email, phone, password, role, gender } = registrationData;
 
     try {
       const user = await usersService.create({
@@ -45,6 +45,7 @@ export class AuthService {
         phone,
         password,
         role: role || Role.USER,
+        gender: gender || 'OTHER',
       });
 
       const { password: _, ...result } = user;

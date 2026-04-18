@@ -7,6 +7,20 @@ import { Role } from '@prisma/client';
 
 const usersRouter = Router();
 
+/**
+ * @openapi
+ * /users/profile:
+ *   get:
+ *     summary: Get current logged-in user profile
+ *     tags: [Users]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved user profile
+ *       401:
+ *         description: Unauthorized
+ */
 // GET /api/v1/users/profile
 usersRouter.get('/profile', jwtAuth, async (req, res, next) => {
   try {
@@ -17,6 +31,30 @@ usersRouter.get('/profile', jwtAuth, async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /users/profile:
+ *   patch:
+ *     summary: Update current logged-in user profile
+ *     tags: [Users]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               email: { type: string }
+ *               gender: { type: string, enum: [MALE, FEMALE, OTHER] }
+ *     responses:
+ *       200:
+ *         description: Profile successfully updated
+ *       401:
+ *         description: Unauthorized
+ */
 // PATCH /api/v1/users/profile
 usersRouter.patch(
   '/profile',
@@ -35,6 +73,20 @@ usersRouter.patch(
   }
 );
 
+/**
+ * @openapi
+ * /users:
+ *   get:
+ *     summary: List all users (Admin only)
+ *     tags: [Users]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved list of users
+ *       403:
+ *         description: Forbidden - Admin role required
+ */
 // GET /api/v1/users (Admin only)
 usersRouter.get('/', jwtAuth, checkRoles(Role.ADMIN), (req, res) => {
   res.json({ message: 'Admin: list all users' });

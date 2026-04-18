@@ -65,6 +65,64 @@ export class OrdersService {
     });
   }
 
+  async createSocialOrder(userId: string, eventId: string, quantity: number) {
+    return prisma.$transaction(async (tx) => {
+      const event = await tx.socialEvent.findUnique({
+        where: { id: eventId },
+      });
+
+      if (!event) {
+        const error: any = new Error('Social event not found');
+        error.status = 404;
+        throw error;
+      }
+
+      if (event.slots_remaining < quantity) {
+        const error: any = new Error('Not enough slots available');
+        error.status = 400;
+        throw error;
+      }
+
+      await tx.socialEvent.update({
+        where: { id: eventId },
+        data: {
+          slots_remaining: {
+            decrement: quantity,
+          },
+        },
+      });
+
+      const order = await tx.order.create({
+        data: {
+          user_id: userId,
+          chef_id: event.chef_id,
+          order_type: 'SOCIAL_EVENT',
+          total_price: event.price * quantity,
+          status: 'PENDING',
+          items: {
+            create: {
+              social_event_id: event.id,
+              item_id: event.id,
+              quantity,
+              price: event.price,
+            },
+          },
+        },
+        include: {
+          items: true,
+        },
+      });
+
+      await ordersQueue.add('send-order-notification', {
+        orderId: order.id,
+        chefId: event.chef_id,
+        userId: userId,
+      });
+
+      return order;
+    });
+  }
+
   async createPantryOrder(userId: string, itemId: string, quantity: number) {
     return prisma.$transaction(async (tx) => {
       const item = await tx.pantryItem.findUnique({
@@ -157,6 +215,7 @@ export class OrdersService {
             daily_meal: true,
             pantry_item: true,
             fuel_slot: true,
+            social_event: true,
           },
         },
         payment: true,

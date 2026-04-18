@@ -25,6 +25,10 @@ export class RegisterDto {
   password: string;
 
   @IsOptional()
+  @IsIn(['MALE', 'FEMALE', 'OTHER'])
+  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+
+  @IsOptional()
   @IsIn(['USER', 'CHEF', 'ADMIN'])
   role?: 'USER' | 'CHEF' | 'ADMIN';
 }

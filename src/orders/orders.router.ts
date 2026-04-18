@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { ordersService } from './orders.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
-import { CreateMealOrderDto, CreatePantryOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
+import { CreateMealOrderDto, CreatePantryOrderDto, CreateSocialOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
@@ -84,6 +84,48 @@ ordersRouter.post(
       const result = await ordersService.createPantryOrder(
         (req.user as any).id,
         req.body.itemId,
+        req.body.quantity
+      );
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /orders/social:
+ *   post:
+ *     summary: Book a social event
+ *     tags: [Orders]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               eventId:
+ *                 type: string
+ *               quantity:
+ *                 type: integer
+ *     responses:
+ *       201:
+ *         description: Social event booked
+ */
+// POST /api/v1/orders/social
+ordersRouter.post(
+  '/social',
+  jwtAuth,
+  validationMiddleware(CreateSocialOrderDto),
+  async (req, res, next) => {
+    try {
+      const result = await ordersService.createSocialOrder(
+        (req.user as any).id,
+        req.body.eventId,
         req.body.quantity
       );
       res.status(201).json(result);

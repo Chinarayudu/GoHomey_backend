@@ -8,6 +8,31 @@ import { prisma } from '../prisma/prisma.service';
 
 const pantryRouter = Router();
 
+/**
+ * @openapi
+ * /pantry:
+ *   post:
+ *     summary: Create a new pantry item (Chef only)
+ *     tags: [Pantry]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, category, price, inventory]
+ *             properties:
+ *               name: { type: string }
+ *               category: { type: string }
+ *               price: { type: number }
+ *               inventory: { type: integer }
+ *               image_url: { type: string }
+ *     responses:
+ *       201:
+ *         description: Pantry item created
+ */
 // POST /api/v1/pantry
 pantryRouter.post(
   '/',
@@ -37,6 +62,23 @@ pantryRouter.post(
   }
 );
 
+/**
+ * @openapi
+ * /pantry:
+ *   get:
+ *     summary: List pantry items
+ *     tags: [Pantry]
+ *     parameters:
+ *       - in: query
+ *         name: category
+ *         schema: { type: string }
+ *       - in: query
+ *         name: chefId
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: List of pantry items retrieved
+ */
 // GET /api/v1/pantry
 pantryRouter.get('/', async (req, res, next) => {
   try {
@@ -51,6 +93,23 @@ pantryRouter.get('/', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /pantry/{id}:
+ *   get:
+ *     summary: Get pantry item details
+ *     tags: [Pantry]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Pantry item details retrieved
+ *       404:
+ *         description: Pantry item not found
+ */
 // GET /api/v1/pantry/:id
 pantryRouter.get('/:id', async (req, res, next) => {
   try {
@@ -61,6 +120,34 @@ pantryRouter.get('/:id', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /pantry/{id}:
+ *   patch:
+ *     summary: Update pantry item (Chef only)
+ *     tags: [Pantry]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               category: { type: string }
+ *               price: { type: number }
+ *               inventory: { type: integer }
+ *               image_url: { type: string }
+ *     responses:
+ *       200:
+ *         description: Pantry item updated
+ */
 // PATCH /api/v1/pantry/:id
 pantryRouter.patch(
   '/:id',
@@ -90,6 +177,23 @@ pantryRouter.patch(
   }
 );
 
+/**
+ * @openapi
+ * /pantry/{id}:
+ *   delete:
+ *     summary: Delete pantry item (Chef only)
+ *     tags: [Pantry]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       204:
+ *         description: Pantry item deleted
+ */
 // DELETE /api/v1/pantry/:id
 pantryRouter.delete('/:id', jwtAuth, checkRoles(Role.CHEF), async (req, res, next) => {
   try {
