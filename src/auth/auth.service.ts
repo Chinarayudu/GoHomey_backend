@@ -25,7 +25,7 @@ export class AuthService {
       role: user.role,
     };
     return {
-      token: jwt.sign(payload, this.jwtSecret, { expiresIn: '1d' }),
+      token: jwt.sign(payload, this.jwtSecret),
       user: {
         id: user.id,
         name: user.name,
