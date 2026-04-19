@@ -82,7 +82,7 @@ model Chef {
   phone       String   @unique
   email       String   @unique
   password    String
-  role       Role     @default(CHEF)
+  role        Role     @default(CHEF)
   bio         String?
   rating      Float    @default(0.0)
   is_verified Boolean  @default(false)
@@ -115,14 +115,14 @@ model Chef {
   application_status ChefApplicationStatus @default(DRAFT)
   registration_step  Int                   @default(1)
 
-  user_id    String?      @unique
-  user       User?        @relation(fields: [user_id], references: [id])
-  followers  Follow[]     @relation("ChefFollowers")
-  meals      DailyMeal[]
-  pantry     PantryItem[]
-  fuel_slots FuelSlot[]
+  user_id       String?       @unique
+  user          User?         @relation(fields: [user_id], references: [id])
+  followers     Follow[]      @relation("ChefFollowers")
+  meals         DailyMeal[]
+  pantry        PantryItem[]
+  fuel_slots    FuelSlot[]
   social_events SocialEvent[]
-  orders     Order[]
+  orders        Order[]
 }
 
 model Follow {
@@ -140,13 +140,13 @@ model DailyMeal {
   chef_id         String
   chef            Chef     @relation(fields: [chef_id], references: [id])
   meal_name       String
-  type            String   // dietary type: VEG, NON_VEG
-  service_window  String?  // LUNCH, DINNER
+  type            String // dietary type: VEG, NON_VEG
+  service_window  String? // LUNCH, DINNER
   image_url       String?
   price           Float
   slots_total     Int
   slots_remaining Int
-  batch_photo_url String?  // For proof of batch/pickup
+  batch_photo_url String? // For proof of batch/pickup
   date            DateTime
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
@@ -244,12 +244,12 @@ model OrderItem {
   price    Float // Price at the time of order
 
   // Relations to actual items (at least one should be populated based on OrderType)
-  daily_meal_id String?
-  daily_meal    DailyMeal?  @relation(fields: [daily_meal_id], references: [id])
-  pantry_id     String?
-  pantry_item   PantryItem? @relation(fields: [pantry_id], references: [id])
-  fuel_slot_id  String?
-  fuel_slot     FuelSlot?   @relation(fields: [fuel_slot_id], references: [id])
+  daily_meal_id   String?
+  daily_meal      DailyMeal?   @relation(fields: [daily_meal_id], references: [id])
+  pantry_id       String?
+  pantry_item     PantryItem?  @relation(fields: [pantry_id], references: [id])
+  fuel_slot_id    String?
+  fuel_slot       FuelSlot?    @relation(fields: [fuel_slot_id], references: [id])
   social_event_id String?
   social_event    SocialEvent? @relation(fields: [social_event_id], references: [id])
 }
@@ -266,15 +266,31 @@ model Payment {
   updated_at    DateTime      @updatedAt
 }
 
+model DeliveryPartner {
+  id           String   @id @default(uuid())
+  name         String // e.g., "Shadowfax"
+  phone_number String?
+  is_active    Boolean  @default(true)
+  api_key      String? // Encrypted API Key securely stored
+  base_url     String? // External API base URL
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  deliveries Delivery[]
+}
+
 model Delivery {
-  id             String         @id @default(uuid())
-  order_id       String         @unique
-  order          Order          @relation(fields: [order_id], references: [id])
-  driver_id      String?
-  pickup_time    DateTime?
-  delivered_time DateTime?
-  pod_image      String? // Proof of Delivery
-  status         DeliveryStatus @default(PENDING)
-  created_at     DateTime       @default(now())
-  updated_at     DateTime       @updatedAt
+  id                    String           @id @default(uuid())
+  order_id              String           @unique
+  order                 Order            @relation(fields: [order_id], references: [id])
+  partner_id            String?
+  partner               DeliveryPartner? @relation(fields: [partner_id], references: [id])
+  external_tracking_id  String? // Stores external delivery tracking code
+  external_tracking_url String? // Stores external live map tracking URL
+  pickup_time           DateTime?
+  delivered_time        DateTime?
+  pod_image             String? // Proof of Delivery
+  status                DeliveryStatus   @default(PENDING)
+  created_at            DateTime         @default(now())
+  updated_at            DateTime         @updatedAt
 }

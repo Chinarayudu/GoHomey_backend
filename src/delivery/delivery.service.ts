@@ -15,7 +15,7 @@ export class DeliveryService {
     return prisma.delivery.create({
       data: {
         order_id: orderId,
-        driver_id: deliveryPartnerId || 'PENDING_PARTNER',
+        partner_id: deliveryPartnerId || null,
         status: 'PENDING',
         pickup_time: new Date(),
       },
@@ -100,6 +100,80 @@ export class DeliveryService {
         });
       }
     }
+  }
+
+  // --- Delivery Partner Management ---
+
+  async createDeliveryPartner(data: { name: string; phone_number?: string; api_key?: string; base_url?: string }) {
+    return prisma.deliveryPartner.create({
+      data: {
+        name: data.name,
+        phone_number: data.phone_number,
+        api_key: data.api_key,
+        base_url: data.base_url,
+      },
+    });
+  }
+
+  async getDeliveryPartners() {
+    return prisma.deliveryPartner.findMany({
+      where: { is_active: true },
+    });
+  }
+
+  async pushToShadowfax(deliveryId: string, partner: any) {
+    console.log(`[Shadowfax API Mock] Pushing delivery ${deliveryId} to Shadowfax...`);
+    // Mocking an external HTTP POST request to Shadowfax's API endpoint
+    // Normally you would use fetch() or axios here, using partner.api_key and partner.base_url
+    
+    // Simulate API delay
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    
+    const fakeOrderId = Math.floor(Math.random() * 100000);
+
+    // Mock response from Shadowfax
+    return {
+      success: true,
+      shadowfax_order_id: `SFX-${fakeOrderId}`,
+      shadowfax_tracking_url: `https://track.shadowfax.in/SFX-${fakeOrderId}`,
+      status: 'ORDER_ACCEPTED',
+    };
+  }
+
+  async assignPartnerToDelivery(deliveryId: string, partnerId: string) {
+    const delivery = await prisma.delivery.findUnique({ where: { id: deliveryId } });
+    if (!delivery) {
+      const err: any = new Error('Delivery not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const partner = await prisma.deliveryPartner.findUnique({ where: { id: partnerId } });
+    if (!partner) {
+      const err: any = new Error('Partner not found');
+      err.status = 404;
+      throw err;
+    }
+
+    // Attempt to push to the external 3rd party API (Shadowfax)
+    const externalResponse = await this.pushToShadowfax(deliveryId, partner);
+
+    if (!externalResponse.success) {
+      const err: any = new Error('Failed to push to external delivery partner');
+      err.status = 500;
+      throw err;
+    }
+
+    // Update internal database
+    return prisma.delivery.update({
+      where: { id: deliveryId },
+      data: {
+        partner_id: partner.id,
+        status: 'ASSIGNED',
+        external_tracking_id: externalResponse.shadowfax_order_id,
+        external_tracking_url: externalResponse.shadowfax_tracking_url,
+      },
+    });
   }
 }
 
