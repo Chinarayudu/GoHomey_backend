@@ -123,7 +123,13 @@ export class OrdersService {
     });
   }
 
-  async createPantryOrder(userId: string, itemId: string, quantity: number) {
+  async createPantryOrder(userId: string, itemId: string, quantity: number, deliveryWindow?: string) {
+    if (!deliveryWindow) {
+      const error: any = new Error('Pantry items must select a delivery window (piggyback)');
+      error.status = 400;
+      throw error;
+    }
+
     return prisma.$transaction(async (tx) => {
       const item = await tx.pantryItem.findUnique({
         where: { id: itemId },
@@ -165,9 +171,17 @@ export class OrdersService {
               price: item.price,
             },
           },
+          delivery: {
+            create: {
+              status: 'PENDING',
+              // We could store the deliveryWindow in a notes field or specialized field if it existed
+              // For now, it represents the intent to piggyback.
+            },
+          },
         },
         include: {
           items: true,
+          delivery: true,
         },
       });
 
@@ -176,6 +190,7 @@ export class OrdersService {
         orderId: order.id,
         chefId: item.chef_id,
         userId: userId,
+        deliveryWindow,
       });
 
       return order;

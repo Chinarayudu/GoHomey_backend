@@ -5,8 +5,43 @@ import { CreatePlanDto, CreateSlotDto } from './dto/subscriptions.dto';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
+import { chefDocumentUpload } from '../common/middleware/upload.middleware';
 
 const subscriptionsRouter = Router();
+
+/**
+ * @openapi
+ * /subscriptions/custom/upload:
+ *   post:
+ *     summary: Upload a custom diet plan PDF
+ *     tags: [Subscriptions]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               diet_plan:
+ *                 type: string
+ *                 format: binary
+ */
+subscriptionsRouter.post(
+  '/custom/upload',
+  jwtAuth,
+  chefDocumentUpload.single('diet_plan'),
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    res.json({
+      status: 'success',
+      message: 'Custom plan uploaded successfully',
+      file_url: `/uploads/chef-documents/${req.file.filename}`,
+    });
+  }
+);
 
 /**
  * @openapi
@@ -29,6 +64,10 @@ const subscriptionsRouter = Router();
  *                 type: number
  *               deliveriesPerWeek:
  *                 type: integer
+ *               calories: { type: integer }
+ *               protein: { type: integer }
+ *               carbs: { type: integer }
+ *               fat: { type: integer }
  *     responses:
  *       201:
  *         description: Plan created

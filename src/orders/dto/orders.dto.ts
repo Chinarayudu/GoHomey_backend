@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsIn, IsOptional } from 'class-validator';
 
 export class CreateMealOrderDto {
   @IsString()
@@ -18,6 +18,10 @@ export class CreatePantryOrderDto {
   @IsNumber()
   @IsNotEmpty()
   quantity: number;
+
+  @IsOptional()
+  @IsString()
+  deliveryWindow?: string;
 }
 
 export class CreateSocialOrderDto {

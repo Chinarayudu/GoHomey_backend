@@ -12,7 +12,10 @@ export class UsersService {
   async findOneWithChef(where: Prisma.UserWhereUniqueInput): Promise<any> {
     return prisma.user.findUnique({
       where,
-      include: { chef: true },
+      include: {
+        chef: true,
+        addresses: true,
+      },
     });
   }
 
@@ -47,6 +50,51 @@ export class UsersService {
     return prisma.user.update({
       data,
       where,
+    });
+  }
+
+  // Address Management
+  async addAddress(userId: string, data: any) {
+    if (data.is_default) {
+      // Unset other defaults
+      await prisma.address.updateMany({
+        where: { user_id: userId, is_default: true },
+        data: { is_default: false },
+      });
+    }
+
+    return prisma.address.create({
+      data: {
+        ...data,
+        user_id: userId,
+      },
+    });
+  }
+
+  async findAddresses(userId: string) {
+    return prisma.address.findMany({
+      where: { user_id: userId },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  async updateAddress(addressId: string, userId: string, data: any) {
+    if (data.is_default) {
+      await prisma.address.updateMany({
+        where: { user_id: userId, is_default: true },
+        data: { is_default: false },
+      });
+    }
+
+    return prisma.address.update({
+      where: { id: addressId, user_id: userId },
+      data,
+    });
+  }
+
+  async removeAddress(addressId: string, userId: string) {
+    return prisma.address.delete({
+      where: { id: addressId, user_id: userId },
     });
   }
 }

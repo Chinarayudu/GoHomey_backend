@@ -20,6 +20,8 @@ const authRouter = Router();
  *         password: { type: string }
  *         gender: { type: string, enum: [MALE, FEMALE, OTHER] }
  *         role: { type: string, enum: [USER, CHEF, ADMIN] }
+ *         dietary_preference: { type: string, enum: [VEG, NON_VEG, BOTH] }
+ *         fitness_goals: { type: array, items: { type: string } }
  */
 
 /**

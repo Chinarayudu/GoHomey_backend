@@ -20,6 +20,8 @@ import deliveryRouter from './delivery/delivery.router';
 import adminRouter from './admin/admin.router';
 import socialRouter from './social/social.router';
 import webhooksRouter from './delivery/webhooks.router';
+import followsRouter from './follows/follows.router';
+import feedRouter from './feed/feed.router';
 
 const app: Express = express();
 
@@ -75,6 +77,8 @@ apiV1Router.use('/delivery', deliveryRouter);
 apiV1Router.use('/admin', adminRouter);
 apiV1Router.use('/social', socialRouter);
 apiV1Router.use('/webhooks', webhooksRouter);
+apiV1Router.use('/follows', followsRouter);
+apiV1Router.use('/feed', feedRouter);
 
 // Swagger setup
 apiV1Router.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

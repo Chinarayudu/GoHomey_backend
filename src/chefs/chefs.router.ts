@@ -413,15 +413,27 @@ chefsRouter.patch(
  * @openapi
  * /chefs:
  *   get:
- *     summary: Get all chefs
+ *     summary: Get all chefs (with optional distance calculation)
  *     tags: [Chefs]
+ *     parameters:
+ *       - in: query
+ *         name: lat
+ *         schema: { type: number }
+ *         description: User's current latitude for distance calculation
+ *       - in: query
+ *         name: lng
+ *         schema: { type: number }
+ *         description: User's current longitude for distance calculation
  *     responses:
  *       200:
- *         description: Successfully retrieved all chefs
+ *         description: Successfully retrieved all chefs, sorted by distance if coordinates provided
  */
+// GET /api/v1/chefs
 chefsRouter.get('/', async (req, res, next) => {
   try {
-    const result = await chefsService.findAll();
+    const { lat, lng } = req.query;
+    const coords = lat && lng ? { latitude: parseFloat(lat as string), longitude: parseFloat(lng as string) } : undefined;
+    const result = await chefsService.findAll(coords);
     res.json(result);
   } catch (error) {
     next(error);

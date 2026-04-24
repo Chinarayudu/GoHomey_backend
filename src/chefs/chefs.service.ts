@@ -193,8 +193,49 @@ export class ChefsService {
     });
   }
 
-  async findAll() {
-    return prisma.chef.findMany();
+  async findAll(coords?: { latitude: number; longitude: number }) {
+    const chefs = await prisma.chef.findMany({
+      where: {
+        application_status: ChefApplicationStatus.APPROVED,
+      },
+    });
+
+    if (!coords) {
+      return chefs;
+    }
+
+    return chefs
+      .map((chef) => {
+        if (chef.latitude && chef.longitude) {
+          const distance = this.calculateDistance(
+            coords.latitude,
+            coords.longitude,
+            chef.latitude,
+            chef.longitude
+          );
+          return { ...chef, distance: parseFloat(distance.toFixed(2)) };
+        }
+        return chef;
+      })
+      .sort((a: any, b: any) => (a.distance || Infinity) - (b.distance || Infinity));
+  }
+
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Earth's radius in km
+    const dLat = this.deg2rad(lat2 - lat1);
+    const dLon = this.deg2rad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.deg2rad(lat1)) *
+        Math.cos(this.deg2rad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  private deg2rad(deg: number): number {
+    return deg * (Math.PI / 180);
   }
 
   async verifyChef(id: string, isVerified: boolean, trustTier?: number) {

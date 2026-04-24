@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEmail } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsEnum } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -16,4 +16,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   password?: string;
+
+  @IsOptional()
+  @IsEnum(['VEG', 'NON_VEG', 'BOTH'])
+  dietary_preference?: 'VEG' | 'NON_VEG' | 'BOTH';
+
+  @IsOptional()
+  @IsString({ each: true })
+  fitness_goals?: string[];
 }

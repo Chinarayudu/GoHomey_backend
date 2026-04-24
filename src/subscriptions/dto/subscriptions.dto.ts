@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
 
 export class CreatePlanDto {
   @IsString()
@@ -19,6 +19,22 @@ export class CreatePlanDto {
 
   @IsNotEmpty()
   menu_json: any;
+
+  @IsOptional()
+  @IsNumber()
+  calories?: number;
+
+  @IsOptional()
+  @IsNumber()
+  protein?: number;
+
+  @IsOptional()
+  @IsNumber()
+  carbs?: number;
+
+  @IsOptional()
+  @IsNumber()
+  fat?: number;
 }
 
 export class CreateSlotDto {

@@ -55,6 +55,7 @@ ordersRouter.post(
  * /orders/pantry:
  *   post:
  *     summary: Create a pantry order
+ *     description: Pantry items must be associated with a delivery window (piggyback logic).
  *     tags: [Orders]
  *     security:
  *       - BearerAuth: []
@@ -64,11 +65,15 @@ ordersRouter.post(
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [itemId, quantity, deliveryWindow]
  *             properties:
  *               itemId:
  *                 type: string
  *               quantity:
  *                 type: integer
+ *               deliveryWindow:
+ *                 type: string
+ *                 example: "Tomorrow Lunch Batch"
  *     responses:
  *       201:
  *         description: Pantry order created
@@ -84,7 +89,8 @@ ordersRouter.post(
       const result = await ordersService.createPantryOrder(
         (req.user as any).id,
         req.body.itemId,
-        req.body.quantity
+        req.body.quantity,
+        req.body.deliveryWindow
       );
       res.status(201).json(result);
     } catch (error) {
