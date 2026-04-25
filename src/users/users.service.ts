@@ -123,7 +123,7 @@ export class UsersService {
       where: { user_id: userId },
     });
 
-    let matchedAddress = null;
+    let matchedAddress: any = null;
     for (const addr of savedAddresses) {
       if (addr.latitude && addr.longitude) {
         const dist = calculateDistance(latitude, longitude, addr.latitude, addr.longitude);

@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 import { redisClient } from '../common/redis/redis.client';
 import { chefsService } from '../chefs/chefs.service';
+import { prisma } from '../prisma/prisma.service';
 
 export class AuthService {
   private readonly jwtSecret = process.env.JWT_SECRET || 'super-secret-key';
@@ -122,7 +123,7 @@ export class AuthService {
     });
 
     let isChef = false;
-    let chefProfile = null;
+    let chefProfile: any = null;
 
     if (person) {
       if (person.chef) {
@@ -160,9 +161,9 @@ export class AuthService {
     return {
       isNewUser: false,
       isChef,
-      registrationStep: isChef ? chefProfile.registration_step : null,
-      applicationStatus: isChef ? chefProfile.application_status : null,
-      redirectToStatus: isChef && chefProfile.application_status !== 'DRAFT',
+      registrationStep: isChef ? chefProfile?.registration_step : null,
+      applicationStatus: isChef ? chefProfile?.application_status : null,
+      redirectToStatus: isChef && chefProfile?.application_status !== 'DRAFT',
       ...result,
       phone: person.phone,
     };
