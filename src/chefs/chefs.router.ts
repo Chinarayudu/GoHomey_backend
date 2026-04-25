@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { chefsService } from './chefs.service';
-import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
+import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.middleware';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
 import { ChefRegisterStep1Dto, ChefRegisterStep2Dto } from './dto/chef-register.dto';
 import { chefDocumentUpload } from '../common/middleware/upload.middleware';
@@ -295,7 +295,7 @@ chefsRouter.get(
       if (!chef) {
         return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
       }
-      
+
       const dashboardData = await chefsService.getDashboardData(chef.id);
       res.json({
         status: 'success',
@@ -419,20 +419,25 @@ chefsRouter.patch(
  *       - in: query
  *         name: lat
  *         schema: { type: number }
- *         description: User's current latitude for distance calculation
+ *         description: User's current latitude for 3km radius filtering
  *       - in: query
  *         name: lng
  *         schema: { type: number }
- *         description: User's current longitude for distance calculation
+ *         description: User's current longitude for 3km radius filtering
  *     responses:
  *       200:
- *         description: Successfully retrieved all chefs, sorted by distance if coordinates provided
+ *         description: Successfully retrieved chefs within 3km, sorted by distance if coordinates provided
  */
 // GET /api/v1/chefs
-chefsRouter.get('/', async (req, res, next) => {
+chefsRouter.get('/', optionalJwtAuth, async (req, res, next) => {
   try {
-    const { lat, lng } = req.query;
-    const coords = lat && lng ? { latitude: parseFloat(lat as string), longitude: parseFloat(lng as string) } : undefined;
+    const { lat, lng } = req.query as any;
+    const user = req.user as any;
+
+    const latitude = lat ? parseFloat(lat as string) : user?.latitude;
+    const longitude = lng ? parseFloat(lng as string) : user?.longitude;
+
+    const coords = latitude && longitude ? { latitude, longitude } : undefined;
     const result = await chefsService.findAll(coords);
     res.json(result);
   } catch (error) {

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { subscriptionsService } from './subscriptions.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
 import { CreatePlanDto, CreateSlotDto } from './dto/subscriptions.dto';
-import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
+import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 import { chefDocumentUpload } from '../common/middleware/upload.middleware';
@@ -95,15 +95,30 @@ subscriptionsRouter.post(
  *   get:
  *     summary: Get all subscription plans
  *     tags: [Subscriptions]
+ *     parameters:
+ *       - in: query
+ *         name: latitude
+ *         schema:
+ *           type: number
+ *         description: User latitude for 3km radius filtering
+ *       - in: query
+ *         name: longitude
+ *         schema:
+ *           type: number
+ *         description: User longitude for 3km radius filtering
  *     responses:
  *       200:
  *         description: Plans retrieved
  */
 // GET /api/v1/subscriptions/plans
-subscriptionsRouter.get('/plans', async (req, res, next) => {
-
+subscriptionsRouter.get('/plans', optionalJwtAuth, async (req, res, next) => {
   try {
-    const result = await subscriptionsService.findAllPlans();
+    const { latitude, longitude } = req.query as any;
+    const user = req.user as any;
+    const resLat = latitude ? parseFloat(latitude as string) : user?.latitude;
+    const resLon = longitude ? parseFloat(longitude as string) : user?.longitude;
+
+    const result = await subscriptionsService.findAllPlans(resLat, resLon);
     res.json(result);
   } catch (error) {
     next(error);

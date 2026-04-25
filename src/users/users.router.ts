@@ -10,6 +10,24 @@ const usersRouter = Router();
 
 /**
  * @openapi
+ * components:
+ *   schemas:
+ *     Address:
+ *       type: object
+ *       required: [label, address_line, city, state, zip_code]
+ *       properties:
+ *         label: { type: string, example: "Home" }
+ *         address_line: { type: string }
+ *         city: { type: string }
+ *         state: { type: string }
+ *         zip_code: { type: string }
+ *         latitude: { type: number }
+ *         longitude: { type: number }
+ *         is_default: { type: boolean }
+ */
+
+/**
+ * @openapi
  * /users/profile:
  *   get:
  *     summary: Get current logged-in user profile
@@ -19,6 +37,18 @@ const usersRouter = Router();
  *     responses:
  *       200:
  *         description: Successfully retrieved user profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: string }
+ *                 name: { type: string }
+ *                 email: { type: string }
+ *                 phone: { type: string }
+ *                 role: { type: string }
+ *                 latitude: { type: number }
+ *                 longitude: { type: number }
  *       401:
  *         description: Unauthorized
  */
@@ -121,6 +151,12 @@ usersRouter.get('/addresses', jwtAuth, async (req, res, next) => {
  *     tags: [Users]
  *     security:
  *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Address'
  */
 usersRouter.post(
   '/addresses',
@@ -144,6 +180,12 @@ usersRouter.post(
  *     tags: [Users]
  *     security:
  *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Address'
  */
 usersRouter.patch(
   '/addresses/:id',
@@ -172,6 +214,53 @@ usersRouter.delete('/addresses/:id', jwtAuth, async (req, res, next) => {
   try {
     await usersService.removeAddress(req.params.id as string, (req.user as any).id);
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /users/location:
+ *   patch:
+ *     summary: Update user's current location coordinates
+ *     tags: [Users]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [latitude, longitude]
+ *             properties:
+ *               latitude: { type: number }
+ *               longitude: { type: number }
+ *     responses:
+ *       200:
+ *         description: Location updated successfully. Returns matchedAddress if coordinates match a saved address (within 100m).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user: { type: object }
+ *                     matchedAddress: { $ref: '#/components/schemas/Address' }
+ */
+usersRouter.patch('/location', jwtAuth, async (req, res, next) => {
+  try {
+    const { latitude, longitude } = req.body;
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ status: 'error', message: 'Latitude and Longitude are required' });
+    }
+    const result = await usersService.updateLocation((req.user as any).id, latitude, longitude);
+    res.json({ status: 'success', message: 'Location updated', data: result });
   } catch (error) {
     next(error);
   }

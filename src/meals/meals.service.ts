@@ -1,3 +1,4 @@
+import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 import { DailyMeal, Prisma } from '@prisma/client';
 
@@ -19,9 +20,9 @@ export class MealsService {
     });
   }
 
-  async findAll(query: { date?: string; chefId?: string }) {
-    const { date, chefId } = query;
-    return prisma.dailyMeal.findMany({
+  async findAll(query: { date?: string; chefId?: string; latitude?: number; longitude?: number }) {
+    const { date, chefId, latitude, longitude } = query;
+    const meals = await prisma.dailyMeal.findMany({
       where: {
         chef_id: chefId,
         date: date ? new Date(date) : undefined,
@@ -36,6 +37,23 @@ export class MealsService {
         },
       },
     });
+
+    if (latitude !== undefined && longitude !== undefined) {
+      return meals.filter((meal) => {
+        if (meal.chef.latitude && meal.chef.longitude) {
+          const distance = calculateDistance(
+            latitude,
+            longitude,
+            meal.chef.latitude,
+            meal.chef.longitude
+          );
+          return distance <= 3;
+        }
+        return false;
+      });
+    }
+
+    return meals;
   }
 
   async findOne(id: string): Promise<any> {

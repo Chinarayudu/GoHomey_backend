@@ -18,6 +18,8 @@ passport.use(
           email: payload.email, 
           phone: payload.phone,
           role: payload.role,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
           isRegistrationPending: payload.isRegistrationPending
         });
       }
@@ -37,6 +39,15 @@ export const jwtAuth = (req: Request, res: Response, next: NextFunction) => {
       return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     }
     req.user = user;
+    next();
+  })(req, res, next);
+};
+
+export const optionalJwtAuth = (req: Request, res: Response, next: NextFunction) => {
+  passport.authenticate('jwt', { session: false }, (err: any, user: any) => {
+    if (user) {
+      req.user = user;
+    }
     next();
   })(req, res, next);
 };

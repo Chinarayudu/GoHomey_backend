@@ -23,6 +23,8 @@ export class AuthService {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      latitude: user.latitude,
+      longitude: user.longitude,
     };
     return {
       token: jwt.sign(payload, this.jwtSecret),
@@ -31,6 +33,8 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        latitude: user.latitude,
+        longitude: user.longitude,
       },
     };
   }
@@ -111,14 +115,27 @@ export class AuthService {
     // Clear OTP after successful validation
     await redisClient.del(`OTP:${phone}`);
 
-    // Check User table first
-    let person: any = await usersService.findOne({ phone });
-    let isChef = false;
+    // 1. Check User table with linked Chef profile
+    let person: any = await prisma.user.findUnique({
+      where: { phone },
+      include: { chef: true },
+    });
 
-    if (!person) {
-      // Check Chef table
-      person = await chefsService.findByPhone(phone);
-      if (person) isChef = true;
+    let isChef = false;
+    let chefProfile = null;
+
+    if (person) {
+      if (person.chef) {
+        isChef = true;
+        chefProfile = person.chef;
+      }
+    } else {
+      // 2. Check standalone Chef table (for cases where user_id is not yet linked)
+      chefProfile = await chefsService.findByPhone(phone);
+      if (chefProfile) {
+        isChef = true;
+        person = chefProfile; // Use chef record as the identity
+      }
     }
 
     if (!person) {
@@ -133,21 +150,21 @@ export class AuthService {
         isNewUser: true,
         phone: phone,
         token: tempToken,
-        message: 'OTP verified successfully. Please complete your registration.'
+        message: 'OTP verified successfully. Please complete your registration.',
       };
     }
 
+    // Log in the person (User or Chef record)
     const result = await this.login(person);
-    const chefStatus = isChef ? (person as any).application_status : null;
 
     return {
       isNewUser: false,
       isChef,
-      registrationStep: isChef ? (person as any).registration_step : null,
-      applicationStatus: chefStatus,
-      redirectToStatus: isChef && chefStatus !== 'DRAFT',
+      registrationStep: isChef ? chefProfile.registration_step : null,
+      applicationStatus: isChef ? chefProfile.application_status : null,
+      redirectToStatus: isChef && chefProfile.application_status !== 'DRAFT',
       ...result,
-      phone: person.phone
+      phone: person.phone,
     };
   }
 }

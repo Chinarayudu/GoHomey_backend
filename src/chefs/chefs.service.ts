@@ -1,3 +1,4 @@
+import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 import { Chef, Prisma, Role, ChefApplicationStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -16,9 +17,13 @@ export class ChefsService {
   }): Promise<Chef> {
     let chef;
 
-    // 1. Try to find the chef by ID or Phone
+    // 1. Try to find the chef by User ID (if logged in as User) or by Phone
     if (idFromToken) {
-      chef = await prisma.chef.findUnique({ where: { id: idFromToken } });
+      chef = await prisma.chef.findFirst({
+        where: {
+          OR: [{ id: idFromToken }, { user_id: idFromToken }],
+        },
+      });
     }
 
     if (!chef) {
@@ -27,9 +32,14 @@ export class ChefsService {
 
     // 2. Create or Update Chef record
     if (!chef) {
+      // Check if a User exists with this phone to link them
+      const existingUser = await prisma.user.findUnique({
+        where: { phone: data.mobile_number },
+      });
+
       // Create Chef with a random placeholder password for now
       const placeholderPassword = await bcrypt.hash(Math.random().toString(36), 10);
-      return prisma.chef.create({
+      const newChef = await prisma.chef.create({
         data: {
           name: data.full_name,
           email: data.email,
@@ -37,8 +47,19 @@ export class ChefsService {
           password: placeholderPassword,
           primary_cuisine: data.primary_cuisine,
           registration_step: 1,
+          user_id: existingUser ? existingUser.id : undefined,
         },
       });
+
+      if (existingUser) {
+        // Upgrade User role to CHEF
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { role: Role.CHEF },
+        });
+      }
+
+      return newChef;
     }
 
     // Update existing Chef
@@ -67,9 +88,13 @@ export class ChefsService {
     let chef;
     
     if (chefId) {
-      chef = await prisma.chef.findUnique({ where: { id: chefId } });
+      chef = await prisma.chef.findFirst({
+        where: {
+          OR: [{ id: chefId }, { user_id: chefId }],
+        },
+      });
     }
-    
+
     if (!chef && phoneFallback) {
       chef = await prisma.chef.findUnique({ where: { phone: phoneFallback } });
     }
@@ -105,7 +130,11 @@ export class ChefsService {
     let chef;
 
     if (chefId) {
-      chef = await prisma.chef.findUnique({ where: { id: chefId } });
+      chef = await prisma.chef.findFirst({
+        where: {
+          OR: [{ id: chefId }, { user_id: chefId }],
+        },
+      });
     }
 
     if (!chef && phoneFallback) {
@@ -143,7 +172,11 @@ export class ChefsService {
     let chef;
 
     if (chefId) {
-      chef = await prisma.chef.findUnique({ where: { id: chefId } });
+      chef = await prisma.chef.findFirst({
+        where: {
+          OR: [{ id: chefId }, { user_id: chefId }],
+        },
+      });
     }
 
     if (!chef && phoneFallback) {
@@ -207,7 +240,7 @@ export class ChefsService {
     return chefs
       .map((chef) => {
         if (chef.latitude && chef.longitude) {
-          const distance = this.calculateDistance(
+          const distance = calculateDistance(
             coords.latitude,
             coords.longitude,
             chef.latitude,
@@ -215,27 +248,10 @@ export class ChefsService {
           );
           return { ...chef, distance: parseFloat(distance.toFixed(2)) };
         }
-        return chef;
+        return { ...chef, distance: Infinity };
       })
-      .sort((a: any, b: any) => (a.distance || Infinity) - (b.distance || Infinity));
-  }
-
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Earth's radius in km
-    const dLat = this.deg2rad(lat2 - lat1);
-    const dLon = this.deg2rad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.deg2rad(lat1)) *
-        Math.cos(this.deg2rad(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  private deg2rad(deg: number): number {
-    return deg * (Math.PI / 180);
+      .filter((chef) => chef.distance <= 3)
+      .sort((a: any, b: any) => a.distance - b.distance);
   }
 
   async verifyChef(id: string, isVerified: boolean, trustTier?: number) {

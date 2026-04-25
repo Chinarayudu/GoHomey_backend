@@ -77,7 +77,22 @@ authRouter.post(
  *                 type: string
  *     responses:
  *       200:
- *         description: Successfully logged in, returns access token
+ *         description: Successfully logged in, returns access token and user details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token: { type: string }
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: string }
+ *                     name: { type: string }
+ *                     email: { type: string }
+ *                     role: { type: string }
+ *                     latitude: { type: number }
+ *                     longitude: { type: number }
  *       401:
  *         description: Invalid credentials
  */
@@ -181,7 +196,19 @@ authRouter.post(
  *                 example: "123456"
  *     responses:
  *       200:
- *         description: Responds with JWT (if existing user) or registration prompt (if new user)
+ *         description: Responds with JWT and user/chef status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 isNewUser: { type: boolean }
+ *                 isChef: { type: boolean }
+ *                 registrationStep: { type: integer }
+ *                 applicationStatus: { type: string }
+ *                 redirectToStatus: { type: boolean }
+ *                 token: { type: string }
+ *                 phone: { type: string }
  *       400:
  *         description: Invalid or expired OTP
  */

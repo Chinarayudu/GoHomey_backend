@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { socialService } from './social.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
 import { CreateSocialEventDto, UpdateSocialEventDto } from './dto/social.dto';
-import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
+import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 
@@ -137,16 +137,28 @@ socialRouter.get(
  *       - in: query
  *         name: date
  *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: latitude
+ *         schema: { type: number }
+ *       - in: query
+ *         name: longitude
+ *         schema: { type: number }
  *     responses:
  *       200:
  *         description: List of social events
  */
-socialRouter.get('/', async (req, res, next) => {
+socialRouter.get('/', optionalJwtAuth, async (req, res, next) => {
   try {
-    const { chefId, date } = req.query;
+    const { chefId, date, latitude, longitude } = req.query as any;
+    const user = req.user as any;
+    const resLat = latitude ? parseFloat(latitude as string) : user?.latitude;
+    const resLon = longitude ? parseFloat(longitude as string) : user?.longitude;
+
     const result = await socialService.findAll({
       chefId: chefId as string,
       date: date as string,
+      latitude: resLat,
+      longitude: resLon,
     });
     res.json({ status: 'success', data: result });
   } catch (error) {

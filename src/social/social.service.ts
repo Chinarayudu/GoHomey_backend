@@ -1,3 +1,4 @@
+import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 
 export class SocialService {
@@ -99,8 +100,8 @@ export class SocialService {
     };
   }
 
-  async findAll(query: { chefId?: string; date?: string }) {
-    const { chefId, date } = query;
+  async findAll(query: { chefId?: string; date?: string; latitude?: number; longitude?: number }) {
+    const { chefId, date, latitude, longitude } = query;
     const where: any = {};
     if (chefId) where.chef_id = chefId;
     if (date) {
@@ -114,7 +115,7 @@ export class SocialService {
       };
     }
 
-    return prisma.socialEvent.findMany({
+    const events = await prisma.socialEvent.findMany({
       where,
       include: {
         chef: {
@@ -126,6 +127,23 @@ export class SocialService {
         },
       },
     });
+
+    if (latitude !== undefined && longitude !== undefined) {
+      return events.filter((event) => {
+        if (event.chef.latitude && event.chef.longitude) {
+          const distance = calculateDistance(
+            latitude,
+            longitude,
+            event.chef.latitude,
+            event.chef.longitude
+          );
+          return distance <= 3;
+        }
+        return false;
+      });
+    }
+
+    return events;
   }
 
   async findOne(id: string): Promise<any> {

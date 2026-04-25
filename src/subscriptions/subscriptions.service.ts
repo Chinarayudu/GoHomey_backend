@@ -1,3 +1,4 @@
+import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 
 export class SubscriptionsService {
@@ -7,8 +8,8 @@ export class SubscriptionsService {
     });
   }
 
-  async findAllPlans() {
-    return prisma.fuelPlan.findMany({
+  async findAllPlans(latitude?: number, longitude?: number) {
+    const plans = await prisma.fuelPlan.findMany({
       include: {
         slots: {
           include: {
@@ -23,6 +24,28 @@ export class SubscriptionsService {
         },
       },
     });
+
+    if (latitude !== undefined && longitude !== undefined) {
+      return plans
+        .map((plan) => ({
+          ...plan,
+          slots: plan.slots.filter((slot) => {
+            if (slot.chef.latitude && slot.chef.longitude) {
+              const distance = calculateDistance(
+                latitude,
+                longitude,
+                slot.chef.latitude,
+                slot.chef.longitude
+              );
+              return distance <= 3;
+            }
+            return false;
+          }),
+        }))
+        .filter((plan) => plan.slots.length > 0);
+    }
+
+    return plans;
   }
 
   async findOnePlan(id: string): Promise<any> {

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { mealsService } from './meals.service';
-import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
+import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { mealImageUpload, batchProofUpload } from '../common/middleware/upload.middleware';
 import { prisma } from '../prisma/prisma.service';
@@ -156,16 +156,32 @@ mealsRouter.post(
  *         schema:
  *           type: string
  *         description: Filter meals by chef ID
+ *       - in: query
+ *         name: latitude
+ *         schema:
+ *           type: number
+ *         description: User latitude for 3km radius filtering
+ *       - in: query
+ *         name: longitude
+ *         schema:
+ *           type: number
+ *         description: User longitude for 3km radius filtering
  *     responses:
  *       200:
  *         description: Successfully retrieved meals
  */
-mealsRouter.get('/', async (req, res, next) => {
+mealsRouter.get('/', optionalJwtAuth, async (req, res, next) => {
   try {
-    const { date, chefId } = req.query;
+    const { date, chefId, latitude, longitude } = req.query as any;
+    const user = req.user as any;
+    const resLat = latitude ? parseFloat(latitude as string) : user?.latitude;
+    const resLon = longitude ? parseFloat(longitude as string) : user?.longitude;
+
     const result = await mealsService.findAll({
       date: date as string,
       chefId: chefId as string,
+      latitude: resLat,
+      longitude: resLon,
     });
     res.json(result);
   } catch (error) {

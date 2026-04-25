@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pantryService } from './pantry.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
 import { CreatePantryDto, UpdatePantryDto } from './dto/pantry.dto';
-import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
+import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 
@@ -75,17 +75,29 @@ pantryRouter.post(
  *       - in: query
  *         name: chefId
  *         schema: { type: string }
+ *       - in: query
+ *         name: latitude
+ *         schema: { type: number }
+ *       - in: query
+ *         name: longitude
+ *         schema: { type: number }
  *     responses:
  *       200:
  *         description: List of pantry items retrieved
  */
 // GET /api/v1/pantry
-pantryRouter.get('/', async (req, res, next) => {
+pantryRouter.get('/', optionalJwtAuth, async (req, res, next) => {
   try {
-    const { category, chefId } = req.query;
+    const { category, chefId, latitude, longitude } = req.query as any;
+    const user = req.user as any;
+    const resLat = latitude ? parseFloat(latitude as string) : user?.latitude;
+    const resLon = longitude ? parseFloat(longitude as string) : user?.longitude;
+
     const result = await pantryService.findAll({
       category: category as string,
       chefId: chefId as string,
+      latitude: resLat,
+      longitude: resLon,
     });
     res.json(result);
   } catch (error) {

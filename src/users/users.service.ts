@@ -1,3 +1,4 @@
+import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 import { User, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -96,6 +97,47 @@ export class UsersService {
     return prisma.address.delete({
       where: { id: addressId, user_id: userId },
     });
+  }
+
+  async updateLocation(userId: string, latitude: number, longitude: number) {
+    // 1. Update User location
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { latitude, longitude },
+    });
+
+    // 2. If user is a chef, sync location to Chef profile
+    const chef = await prisma.chef.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (chef) {
+      await prisma.chef.update({
+        where: { id: chef.id },
+        data: { latitude, longitude },
+      });
+    }
+
+    // 3. Find if this matches any saved address (within 100 meters)
+    const savedAddresses = await prisma.address.findMany({
+      where: { user_id: userId },
+    });
+
+    let matchedAddress = null;
+    for (const addr of savedAddresses) {
+      if (addr.latitude && addr.longitude) {
+        const dist = calculateDistance(latitude, longitude, addr.latitude, addr.longitude);
+        if (dist <= 0.1) { // 0.1 km = 100 meters
+          matchedAddress = addr;
+          break;
+        }
+      }
+    }
+
+    return {
+      user: updatedUser,
+      matchedAddress: matchedAddress,
+    };
   }
 }
 
