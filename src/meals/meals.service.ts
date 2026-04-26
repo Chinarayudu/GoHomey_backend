@@ -1,6 +1,7 @@
 import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 import { DailyMeal, Prisma } from '@prisma/client';
+import { isServiceWindowOpen } from '../common/utils/time';
 
 export class MealsService {
   async create(chefId: string, data: any): Promise<any> {
@@ -8,6 +9,25 @@ export class MealsService {
     if (!chef) {
       const error: any = new Error('Chef profile not found');
       error.status = 404;
+      throw error;
+    }
+
+    // Restriction: Can only create meals 3 days in advance
+    const mealDate = new Date(data.date);
+    const now = new Date();
+    const threeDaysFromNow = new Date();
+    threeDaysFromNow.setDate(now.getDate() + 3);
+    threeDaysFromNow.setHours(23, 59, 59, 999);
+
+    if (mealDate > threeDaysFromNow) {
+      const error: any = new Error('You can only create meals up to 3 days in advance');
+      error.status = 400;
+      throw error;
+    }
+
+    if (mealDate < new Date(now.setHours(0,0,0,0))) {
+      const error: any = new Error('Cannot create meals for past dates');
+      error.status = 400;
       throw error;
     }
 
@@ -22,10 +42,15 @@ export class MealsService {
 
   async findAll(query: { date?: string; chefId?: string; latitude?: number; longitude?: number }) {
     const { date, chefId, latitude, longitude } = query;
+    
+    // Default to showing only today and future meals if no date is specified
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     const meals = await prisma.dailyMeal.findMany({
       where: {
         chef_id: chefId,
-        date: date ? new Date(date) : undefined,
+        date: date ? new Date(date) : { gte: startOfToday },
       },
       include: {
         chef: {
@@ -40,6 +65,10 @@ export class MealsService {
 
     if (latitude !== undefined && longitude !== undefined) {
       return meals.filter((meal) => {
+        // 1. Time restriction check
+        if (!isServiceWindowOpen(meal)) return false;
+
+        // 2. Distance check
         if (meal.chef.latitude && meal.chef.longitude) {
           const distance = calculateDistance(
             latitude,
@@ -53,7 +82,7 @@ export class MealsService {
       });
     }
 
-    return meals;
+    return meals.filter(isServiceWindowOpen);
   }
 
   async findOne(id: string): Promise<any> {

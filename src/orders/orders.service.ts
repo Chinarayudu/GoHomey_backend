@@ -1,6 +1,7 @@
 import { prisma } from '../prisma/prisma.service';
 import { ordersQueue } from '../common/queues/queues';
 import { Prisma } from '@prisma/client';
+import { isServiceWindowOpen } from '../common/utils/time';
 
 export class OrdersService {
   async createDailyMealOrder(userId: string, mealId: string, quantity: number) {
@@ -243,6 +244,123 @@ export class OrdersService {
         },
       },
       orderBy: { created_at: 'desc' },
+    });
+  }
+
+  async checkout(userId: string, items: { id: string; type: string; quantity: number }[]) {
+    return prisma.$transaction(async (tx) => {
+      const orderGroups: Record<string, { chefId: string; items: any[]; totalPrice: number }> = {};
+
+      // 1. Fetch all items and group them by chef
+      for (const itemRequest of items) {
+        let itemData: any;
+        let chefId: string;
+        let price: number;
+        let updateData: any = null;
+        let updateModel: any = null;
+
+        switch (itemRequest.type) {
+          case 'DAILY_MEAL':
+            itemData = await tx.dailyMeal.findUnique({ where: { id: itemRequest.id } });
+            if (!itemData) throw new Error(`Meal ${itemRequest.id} not found`);
+            if (!isServiceWindowOpen(itemData)) throw new Error(`Ordering is closed for ${itemData.meal_name}`);
+            if (itemData.slots_remaining < itemRequest.quantity) throw new Error(`Not enough slots for ${itemData.meal_name}`);
+            chefId = itemData.chef_id;
+            price = itemData.price;
+            updateModel = tx.dailyMeal;
+            updateData = { slots_remaining: { decrement: itemRequest.quantity } };
+            break;
+
+          case 'PANTRY_ITEM':
+            itemData = await tx.pantryItem.findUnique({ where: { id: itemRequest.id } });
+            if (!itemData) throw new Error(`Pantry item ${itemRequest.id} not found`);
+            if (itemData.inventory < itemRequest.quantity) throw new Error(`Not enough inventory for ${itemData.name}`);
+            chefId = itemData.chef_id;
+            price = itemData.price;
+            updateModel = tx.pantryItem;
+            updateData = { inventory: { decrement: itemRequest.quantity } };
+            break;
+
+          case 'SOCIAL_EVENT':
+            itemData = await tx.socialEvent.findUnique({ where: { id: itemRequest.id } });
+            if (!itemData) throw new Error(`Social event ${itemRequest.id} not found`);
+            if (itemData.slots_remaining < itemRequest.quantity) throw new Error(`Not enough slots for ${itemData.title}`);
+            chefId = itemData.chef_id;
+            price = itemData.price;
+            updateModel = tx.socialEvent;
+            updateData = { slots_remaining: { decrement: itemRequest.quantity } };
+            break;
+
+          default:
+            throw new Error(`Unsupported item type: ${itemRequest.type}`);
+        }
+
+        // Initialize group if not exists
+        if (!orderGroups[chefId]) {
+          orderGroups[chefId] = { chefId, items: [], totalPrice: 0 };
+        }
+
+        orderGroups[chefId].items.push({
+          item_id: itemRequest.id,
+          type: itemRequest.type,
+          quantity: itemRequest.quantity,
+          price,
+          // Map to specific schema fields
+          daily_meal_id: itemRequest.type === 'DAILY_MEAL' ? itemRequest.id : null,
+          pantry_id: itemRequest.type === 'PANTRY_ITEM' ? itemRequest.id : null,
+          social_event_id: itemRequest.type === 'SOCIAL_EVENT' ? itemRequest.id : null,
+        });
+        orderGroups[chefId].totalPrice += price * itemRequest.quantity;
+
+        // 2. Decrement inventory
+        await updateModel.update({
+          where: { id: itemRequest.id },
+          data: updateData,
+        });
+      }
+
+      // 3. Create Orders for each chef group
+      const createdOrders: any[] = [];
+      for (const chefId in orderGroups) {
+        const group = orderGroups[chefId];
+        const order = await tx.order.create({
+          data: {
+            user_id: userId,
+            chef_id: chefId,
+            order_type: group.items[0].type as any,
+            total_price: group.totalPrice,
+            status: 'PENDING',
+            items: {
+              create: group.items.map((item: any) => ({
+                item_id: item.item_id,
+                quantity: item.quantity,
+                price: item.price,
+                daily_meal_id: item.daily_meal_id,
+                pantry_id: item.pantry_id,
+                social_event_id: item.social_event_id,
+              })),
+            },
+          },
+          include: {
+            items: true,
+          },
+        });
+
+        // 4. Notify chef (async)
+        await ordersQueue.add('send-order-notification', {
+          orderId: order.id,
+          chefId: chefId,
+          userId: userId,
+        });
+
+        createdOrders.push(order);
+      }
+
+      return {
+        status: 'success',
+        message: `${createdOrders.length} order(s) created successfully`,
+        orders: createdOrders,
+      };
     });
   }
 

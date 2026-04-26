@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { ordersService } from './orders.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
-import { CreateMealOrderDto, CreatePantryOrderDto, CreateSocialOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
+import { CreateMealOrderDto, CreatePantryOrderDto, CreateSocialOrderDto, UpdateOrderStatusDto, CheckoutDto } from './dto/orders.dto';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
@@ -134,6 +134,53 @@ ordersRouter.post(
         req.body.eventId,
         req.body.quantity
       );
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /orders/checkout:
+ *   post:
+ *     summary: Checkout multiple items (Cart)
+ *     description: Groups items by chef and creates separate orders for each chef.
+ *     tags: [Orders]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                       enum: [DAILY_MEAL, PANTRY_ITEM, SOCIAL_EVENT]
+ *                     quantity:
+ *                       type: integer
+ *     responses:
+ *       201:
+ *         description: Orders created successfully
+ */
+// POST /api/v1/orders/checkout
+ordersRouter.post(
+  '/checkout',
+  jwtAuth,
+  validationMiddleware(CheckoutDto),
+  async (req, res, next) => {
+    try {
+      const result = await ordersService.checkout((req.user as any).id, req.body.items);
       res.status(201).json(result);
     } catch (error) {
       next(error);

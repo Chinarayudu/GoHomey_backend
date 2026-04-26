@@ -34,6 +34,26 @@ export class CreateSocialOrderDto {
   quantity: number;
 }
 
+export class CartItemDto {
+  @IsString()
+  @IsNotEmpty()
+  id: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['DAILY_MEAL', 'PANTRY_ITEM', 'SOCIAL_EVENT', 'FUEL_PLAN'])
+  type: 'DAILY_MEAL' | 'PANTRY_ITEM' | 'SOCIAL_EVENT' | 'FUEL_PLAN';
+
+  @IsNumber()
+  @IsNotEmpty()
+  quantity: number;
+}
+
+export class CheckoutDto {
+  @IsNotEmpty()
+  items: CartItemDto[];
+}
+
 export class UpdateOrderStatusDto {
   @IsIn([
     'PENDING',
