@@ -134,31 +134,16 @@ socialRouter.get(
  *       - in: query
  *         name: chefId
  *         schema: { type: string }
- *       - in: query
- *         name: date
- *         schema: { type: string, format: date }
- *       - in: query
- *         name: latitude
- *         schema: { type: number }
- *       - in: query
- *         name: longitude
- *         schema: { type: number }
  *     responses:
  *       200:
  *         description: List of social events
  */
 socialRouter.get('/', optionalJwtAuth, async (req, res, next) => {
   try {
-    const { chefId, date, latitude, longitude } = req.query as any;
-    const user = req.user as any;
-    const resLat = latitude ? parseFloat(latitude as string) : user?.latitude;
-    const resLon = longitude ? parseFloat(longitude as string) : user?.longitude;
+    const { chefId } = req.query as any;
 
     const result = await socialService.findAll({
       chefId: chefId as string,
-      date: date as string,
-      latitude: resLat,
-      longitude: resLon,
     });
     res.json({ status: 'success', data: result });
   } catch (error) {

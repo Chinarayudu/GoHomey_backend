@@ -104,20 +104,10 @@ export class SocialService {
     };
   }
 
-  async findAll(query: { chefId?: string; date?: string; latitude?: number; longitude?: number }) {
-    const { chefId, date, latitude, longitude } = query;
+  async findAll(query: { chefId?: string }) {
+    const { chefId } = query;
     const where: any = {};
     if (chefId) where.chef_id = chefId;
-    if (date) {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-      where.date = {
-        gte: startOfDay,
-        lte: endOfDay,
-      };
-    }
 
     const events = await prisma.socialEvent.findMany({
       where,
@@ -131,21 +121,6 @@ export class SocialService {
         },
       },
     });
-
-    if (latitude !== undefined && longitude !== undefined) {
-      return events.filter((event) => {
-        if (event.chef.latitude && event.chef.longitude) {
-          const distance = calculateDistance(
-            latitude,
-            longitude,
-            event.chef.latitude,
-            event.chef.longitude
-          );
-          return distance <= 3;
-        }
-        return false;
-      });
-    }
 
     return events;
   }
