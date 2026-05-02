@@ -129,6 +129,25 @@ export class AuthService {
       if (person.chef) {
         isChef = true;
         chefProfile = person.chef;
+      } else {
+        // Fallback: Check if a Chef record exists by phone but isn't linked
+        chefProfile = await chefsService.findByPhone(phone);
+        if (chefProfile) {
+          isChef = true;
+          // Link them now
+          await prisma.chef.update({
+            where: { id: chefProfile.id },
+            data: { user_id: person.id },
+          });
+          // Upgrade user role to CHEF if necessary
+          if (person.role !== Role.CHEF) {
+            person = await prisma.user.update({
+              where: { id: person.id },
+              data: { role: Role.CHEF },
+            });
+          }
+          person.chef = chefProfile;
+        }
       }
     } else {
       // 2. Check standalone Chef table (for cases where user_id is not yet linked)
