@@ -19,12 +19,11 @@ export class PantryService {
     });
   }
 
-  async findAll(query: { category?: string; chefId?: string; latitude?: number; longitude?: number }) {
-    const { category, chefId, latitude, longitude } = query;
+  async findAll(query: { chefId?: string }) {
+    const { chefId } = query;
     const items = await prisma.pantryItem.findMany({
       where: {
         chef_id: chefId,
-        category: category,
       },
       include: {
         chef: {
@@ -36,21 +35,6 @@ export class PantryService {
         },
       },
     });
-
-    if (latitude !== undefined && longitude !== undefined) {
-      return items.filter((item) => {
-        if (item.chef.latitude && item.chef.longitude) {
-          const distance = calculateDistance(
-            latitude,
-            longitude,
-            item.chef.latitude,
-            item.chef.longitude
-          );
-          return distance <= 3;
-        }
-        return false;
-      });
-    }
 
     return items;
   }
