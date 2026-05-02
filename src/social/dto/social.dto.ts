@@ -13,9 +13,9 @@ export class CreateSocialEventDto {
   @IsNotEmpty()
   date: string;
 
+  @IsOptional()
   @IsDateString()
-  @IsNotEmpty()
-  end_date: string;
+  end_date?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -38,6 +38,22 @@ export class CreateSocialEventDto {
   @IsOptional()
   @IsString()
   image_url?: string;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  @IsOptional()
+  @IsInt()
+  slots_male_total?: number;
+
+  @IsOptional()
+  @IsInt()
+  slots_female_total?: number;
 }
 
 export class UpdateSocialEventDto {
@@ -78,4 +94,20 @@ export class UpdateSocialEventDto {
   @IsOptional()
   @IsString()
   image_url?: string;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  @IsOptional()
+  @IsInt()
+  slots_male_total?: number;
+
+  @IsOptional()
+  @IsInt()
+  slots_female_total?: number;
 }

@@ -3,12 +3,16 @@ import { prisma } from '../prisma/prisma.service';
 
 export class SocialService {
   async create(chefId: string, data: any): Promise<any> {
-    const { date, end_date, ...rest } = data;
+    const { date, end_date, latitude, longitude, slots_male_total, slots_female_total, ...rest } = data;
+    
+    // Default end_date to date if not provided by frontend
+    const eventEndDate = end_date ? new Date(end_date) : new Date(date);
+    
     return prisma.socialEvent.create({
       data: {
         ...rest,
         date: new Date(date),
-        end_date: new Date(end_date),
+        end_date: eventEndDate,
         chef_id: chefId,
         slots_remaining: data.slots_total,
       },
@@ -175,11 +179,14 @@ export class SocialService {
       throw error;
     }
 
+    const { latitude, longitude, slots_male_total, slots_female_total, ...rest } = data;
+    const updateData: any = { ...rest };
+
     // If slots_total is updated, we need to adjust slots_remaining
-    if (data.slots_total !== undefined) {
-      const diff = data.slots_total - event.slots_total;
-      data.slots_remaining = event.slots_remaining + diff;
-      if (data.slots_remaining < 0) {
+    if (updateData.slots_total !== undefined) {
+      const diff = updateData.slots_total - event.slots_total;
+      updateData.slots_remaining = event.slots_remaining + diff;
+      if (updateData.slots_remaining < 0) {
         const error: any = new Error('New slots total cannot be less than already booked slots');
         error.status = 400;
         throw error;
@@ -188,7 +195,7 @@ export class SocialService {
 
     return prisma.socialEvent.update({
       where: { id },
-      data,
+      data: updateData,
     });
   }
 
