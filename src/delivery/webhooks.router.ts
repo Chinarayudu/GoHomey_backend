@@ -71,16 +71,35 @@ webhooksRouter.post('/borzo', async (req, res, next) => {
 
     const borzo_order_id = order.order_id.toString();
     const status = order.status;
+    const courier = order.courier; // Borzo often provides courier info
     
-    console.log(`[Borzo Webhook] Received status ${status} for ${borzo_order_id}`);
+    console.log(`[Borzo Webhook] Received status "${status}" for Order ID: ${borzo_order_id}`);
 
     // Map Borzo status to our internal DeliveryStatus
     let internalStatus: DeliveryStatus | null = null;
     
-    // Example Borzo statuses: available, active, completed, canceled, delayed
-    if (status === 'active') internalStatus = DeliveryStatus.PICKED_UP;
-    if (status === 'completed') internalStatus = DeliveryStatus.DELIVERED;
-    if (status === 'canceled' || status === 'failed') internalStatus = DeliveryStatus.FAILED;
+    // Detailed Borzo statuses: 
+    // - "available": No courier found yet
+    // - "active": Courier picked up
+    // - "completed": Delivered
+    // - "canceled": Canceled by user/system
+    // - "delayed": Courier is late
+    
+    switch (status) {
+      case 'active':
+        internalStatus = DeliveryStatus.PICKED_UP;
+        break;
+      case 'completed':
+        internalStatus = DeliveryStatus.DELIVERED;
+        break;
+      case 'canceled':
+      case 'failed':
+        internalStatus = DeliveryStatus.FAILED;
+        break;
+      case 'available':
+        internalStatus = DeliveryStatus.ASSIGNED;
+        break;
+    }
 
     if (internalStatus) {
       // Find delivery by external tracking ID
@@ -88,8 +107,15 @@ webhooksRouter.post('/borzo', async (req, res, next) => {
         where: { external_tracking_id: borzo_order_id },
       });
 
-      if (delivery && delivery.status !== internalStatus) {
-        await deliveryService.updateDeliveryStatus(delivery.id, internalStatus);
+      if (delivery) {
+        if (delivery.status !== internalStatus) {
+          console.log(`[Borzo Webhook] Updating Delivery ${delivery.id} status to ${internalStatus}`);
+          await deliveryService.updateDeliveryStatus(delivery.id, internalStatus);
+        } else {
+          console.log(`[Borzo Webhook] Delivery ${delivery.id} already has status ${internalStatus}. Skipping update.`);
+        }
+      } else {
+        console.warn(`[Borzo Webhook] No matching delivery found for external ID: ${borzo_order_id}`);
       }
     }
 
