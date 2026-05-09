@@ -121,27 +121,81 @@ export class DeliveryService {
     });
   }
 
-  async pushToShadowfax(deliveryId: string, partner: any) {
-    console.log(`[Shadowfax API Mock] Pushing delivery ${deliveryId} to Shadowfax...`);
-    // Mocking an external HTTP POST request to Shadowfax's API endpoint
-    // Normally you would use fetch() or axios here, using partner.api_key and partner.base_url
-    
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    const fakeOrderId = Math.floor(Math.random() * 100000);
+  async pushToBorzo(deliveryId: string, partner: any, order: any, chef: any, user: any, userAddress: any) {
+    console.log(`[Borzo API] Pushing delivery ${deliveryId} to Borzo...`);
 
-    // Mock response from Shadowfax
-    return {
-      success: true,
-      shadowfax_order_id: `SFX-${fakeOrderId}`,
-      shadowfax_tracking_url: `https://track.shadowfax.in/SFX-${fakeOrderId}`,
-      status: 'ORDER_ACCEPTED',
+    const token = process.env.BORZO_API_TOKEN || partner.api_key;
+    const baseUrl = process.env.BORZO_BASE_URL || partner.base_url || 'https://robotapitest-in.borzodelivery.com/api/business/1.6';
+
+    const payload = {
+      matter: "Homey Food Delivery",
+      points: [
+        {
+          address: chef.kitchen_address || "Default Kitchen Address",
+          contact_person: {
+            phone: chef.phone || "9999999999",
+            name: chef.name || "Chef"
+          }
+        },
+        {
+          address: userAddress?.address_line ? `${userAddress.address_line}, ${userAddress.city}, ${userAddress.state} ${userAddress.zip_code}` : "Default User Address",
+          contact_person: {
+            phone: user.phone || "9999999999",
+            name: user.name || "Customer"
+          }
+        }
+      ]
     };
+
+    try {
+      const response = await fetch(`${baseUrl}/create-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-DV-Auth-Token': token as string,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.is_successful) {
+        console.error("Borzo API Error:", data);
+        return { success: false, error: data };
+      }
+
+      return {
+        success: true,
+        borzo_order_id: data.order.order_id.toString(),
+        borzo_tracking_url: data.order.tracking_url || `https://borzodelivery.com/orders/${data.order.order_id}`,
+        status: data.order.status,
+      };
+    } catch (error) {
+      console.error("Failed to call Borzo API:", error);
+      return { success: false, error };
+    }
   }
 
   async assignPartnerToDelivery(deliveryId: string, partnerId: string) {
-    const delivery = await prisma.delivery.findUnique({ where: { id: deliveryId } });
+    const delivery = await prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: {
+        order: {
+          include: {
+            chef: true,
+            user: {
+              include: {
+                addresses: {
+                  where: { is_default: true },
+                  take: 1
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
     if (!delivery) {
       const err: any = new Error('Delivery not found');
       err.status = 404;
@@ -155,8 +209,11 @@ export class DeliveryService {
       throw err;
     }
 
-    // Attempt to push to the external 3rd party API (Shadowfax)
-    const externalResponse = await this.pushToShadowfax(deliveryId, partner);
+    const order = delivery.order;
+    const userAddress = order.user.addresses[0] || null;
+
+    // Attempt to push to the external 3rd party API (Borzo)
+    const externalResponse = await this.pushToBorzo(deliveryId, partner, order, order.chef, order.user, userAddress);
 
     if (!externalResponse.success) {
       const err: any = new Error('Failed to push to external delivery partner');
@@ -170,8 +227,8 @@ export class DeliveryService {
       data: {
         partner_id: partner.id,
         status: 'ASSIGNED',
-        external_tracking_id: externalResponse.shadowfax_order_id,
-        external_tracking_url: externalResponse.shadowfax_tracking_url,
+        external_tracking_id: externalResponse.borzo_order_id,
+        external_tracking_url: externalResponse.borzo_tracking_url,
       },
     });
   }
