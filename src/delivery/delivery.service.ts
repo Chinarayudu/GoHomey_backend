@@ -84,6 +84,8 @@ export class DeliveryService {
       {} as Record<string, any[]>,
     );
 
+    const createdDeliveryIds: string[] = [];
+
     for (const chefId in chefGroups) {
       const orders = chefGroups[chefId];
       console.log(
@@ -91,7 +93,8 @@ export class DeliveryService {
       );
 
       for (const order of orders) {
-        await this.createDelivery(order.id);
+        const delivery = await this.createDelivery(order.id);
+        createdDeliveryIds.push(delivery.id);
 
         // Update order status to out for delivery
         await prisma.order.update({
@@ -100,6 +103,32 @@ export class DeliveryService {
         });
       }
     }
+
+    return createdDeliveryIds;
+  }
+
+  async autoDispatchBatchedDeliveries(partnerId?: string) {
+    const newDeliveryIds = await this.processBatchedDeliveries();
+    
+    if (!newDeliveryIds || newDeliveryIds.length === 0) {
+      return { message: 'No pending orders to dispatch', count: 0, deliveries: [] };
+    }
+
+    const assignedDeliveries: any[] = [];
+    for (const id of newDeliveryIds) {
+      try {
+        const result = await this.assignPartnerToDelivery(id, partnerId);
+        assignedDeliveries.push(result);
+      } catch (e) {
+        console.error(`Failed to auto-assign delivery ${id}:`, e);
+      }
+    }
+
+    return {
+      message: 'Successfully batched and assigned deliveries',
+      count: assignedDeliveries.length,
+      deliveries: assignedDeliveries
+    };
   }
 
   // --- Delivery Partner Management ---
@@ -176,7 +205,7 @@ export class DeliveryService {
     }
   }
 
-  async assignPartnerToDelivery(deliveryId: string, partnerId: string) {
+  async assignPartnerToDelivery(deliveryId: string, partnerId?: string) {
     const delivery = await prisma.delivery.findUnique({
       where: { id: deliveryId },
       include: {
@@ -202,9 +231,15 @@ export class DeliveryService {
       throw err;
     }
 
-    const partner = await prisma.deliveryPartner.findUnique({ where: { id: partnerId } });
+    let partner;
+    if (partnerId) {
+      partner = await prisma.deliveryPartner.findUnique({ where: { id: partnerId } });
+    } else {
+      partner = await prisma.deliveryPartner.findFirst({ where: { is_active: true } });
+    }
+
     if (!partner) {
-      const err: any = new Error('Partner not found');
+      const err: any = new Error('Delivery partner not found. Please ensure Borzo is added as an active partner.');
       err.status = 404;
       throw err;
     }

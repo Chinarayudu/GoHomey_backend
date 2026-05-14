@@ -96,8 +96,8 @@ adminRouter.get('/revenue/daily', async (req, res, next) => {
  *           type: string
  *     responses:
  *       200:
-+ *         description: List of orders
-+ */
+ *         description: List of orders
+ */
 adminRouter.get('/orders', async (req, res, next) => {
   try {
     const { status, type, chefId, userId } = req.query;
@@ -170,12 +170,12 @@ adminRouter.get('/orders/:id', async (req, res, next) => {
  *           schema:
  *             type: object
  *             properties:
-+ *               status:
-+ *                 type: string
-+ *     responses:
-+ *       200:
-+ *         description: Order updated
-+ */
+ *               status:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Order updated
+ */
 adminRouter.patch('/orders/:id/status', async (req, res, next) => {
   try {
     const { status } = req.body;

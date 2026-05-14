@@ -34,6 +34,46 @@ deliveryRouter.post(
 
 /**
  * @openapi
+ * /delivery/auto-dispatch:
+ *   post:
+ *     summary: Process all pending deliveries into batches and auto-assign them to a delivery partner (Admin only)
+ *     tags: [Delivery]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               partner_id:
+ *                 type: string
+ *                 description: Optional ID of the delivery partner. If omitted, uses the first active partner.
+ *     responses:
+ *       200:
+ *         description: Batched deliveries processed and assigned successfully
+ *       400:
+ *         description: Error processing batch or assigning
+ */
+// POST /api/v1/delivery/auto-dispatch
+deliveryRouter.post(
+  '/auto-dispatch',
+  jwtAuth,
+  checkRoles(Role.ADMIN),
+  async (req, res, next) => {
+    try {
+      const { partner_id } = req.body || {};
+      const result = await deliveryService.autoDispatchBatchedDeliveries(partner_id);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
  * /delivery/active:
  *   get:
  *     summary: Get all active deliveries
@@ -185,9 +225,6 @@ deliveryRouter.get('/partners', jwtAuth, checkRoles(Role.ADMIN), async (req, res
 deliveryRouter.patch('/:id/assign', jwtAuth, checkRoles(Role.ADMIN), async (req, res, next) => {
   try {
     const { partner_id } = req.body;
-    if (!partner_id) {
-      return res.status(400).json({ error: 'partner_id is required' });
-    }
     const result = await deliveryService.assignPartnerToDelivery(req.params.id as string, partner_id);
     res.json(result);
   } catch (error) {
