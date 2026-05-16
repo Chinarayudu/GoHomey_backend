@@ -1,10 +1,11 @@
 import 'dotenv/config';
 import { prisma } from '../src/prisma/prisma.service';
 import { deliveryService } from '../src/delivery/delivery.service';
+import { resolveShadowfaxBaseUrl } from '../src/delivery/shadowfax.client';
 
 async function main() {
-  console.log('SHADOWFAX_MOCK:', process.env.SHADOWFAX_MOCK);
-  console.log('SHADOWFAX_BASE_URL:', process.env.SHADOWFAX_BASE_URL);
+  console.log('SHADOWFAX_API_MODE:', process.env.SHADOWFAX_API_MODE || 'testing');
+  console.log('SHADOWFAX_BASE_URL:', resolveShadowfaxBaseUrl());
 
   await prisma.deliveryPartner.updateMany({
     where: { name: { equals: 'Borzo', mode: 'insensitive' } },

@@ -1,10 +1,19 @@
-export type ShadowfaxEnvironment = 'production' | 'staging' | 'staging1';
+/**
+ * Shadowfax Flash (hyperlocal) API client.
+ *
+ * Shadowfax portal naming:
+ * - "Testing Environment" → Get Testing Token  → SHADOWFAX_API_TOKEN
+ * - Resources → API Documentation → "Staging URL" → testing API host (NOT production)
+ * - "Production Environment" → only when SHADOWFAX_API_MODE=production
+ */
 
-const BASE_URLS: Record<ShadowfaxEnvironment, string> = {
-  production: 'https://flash-api.shadowfax.in',
-  staging: 'https://hlbackend.staging.shadowfax.in',
-  staging1: 'https://hlbackend2.staging.shadowfax.in',
-};
+export type ShadowfaxApiMode = 'testing' | 'production';
+
+/** Testing API host (pairs with Testing Token from the portal). */
+export const SHADOWFAX_TESTING_BASE_URL = 'https://hlbackend.staging.shadowfax.in';
+
+/** Live production Flash API — do not use for QA. */
+export const SHADOWFAX_PRODUCTION_BASE_URL = 'https://flash-api.shadowfax.in';
 
 export interface ShadowfaxLocation {
   name?: string;
@@ -44,38 +53,38 @@ export interface ShadowfaxTrackResponse {
   status: string;
   sfx_order_id?: string;
   tracking_url?: string;
+  event_time?: string;
+  rider_name?: string;
+  rider_contact_number?: string;
+}
+
+const INDIAN_MOBILE = /^[6-9]\d{9}$/;
+
+export function resolveShadowfaxApiMode(): ShadowfaxApiMode {
+  const mode = (process.env.SHADOWFAX_API_MODE || 'testing').toLowerCase();
+  return mode === 'production' ? 'production' : 'testing';
+}
+
+export function resolveShadowfaxBaseUrl(partnerBaseUrl?: string | null): string {
+  const override = process.env.SHADOWFAX_BASE_URL?.trim();
+  if (override) return override.replace(/\/$/, '');
+  if (partnerBaseUrl?.trim()) return partnerBaseUrl.replace(/\/$/, '');
+  return resolveShadowfaxApiMode() === 'production'
+    ? SHADOWFAX_PRODUCTION_BASE_URL
+    : SHADOWFAX_TESTING_BASE_URL;
 }
 
 export class ShadowfaxClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
 
-  constructor(
-    apiKey: string,
-    environment: ShadowfaxEnvironment = 'production',
-    baseUrlOverride?: string,
-  ) {
+  constructor(apiKey: string, baseUrl: string) {
     this.apiKey = apiKey;
-    this.baseUrl = (baseUrlOverride || BASE_URLS[environment]).replace(/\/$/, '');
+    this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
-  static resolveEnvironment(): ShadowfaxEnvironment {
-    const env = (process.env.SHADOWFAX_ENVIRONMENT || 'production').toLowerCase();
-    if (env === 'production' || env === 'staging' || env === 'staging1') {
-      return env;
-    }
-    return 'production';
-  }
-
-  /**
-   * Prefer SHADOWFAX_BASE_URL from the Shadowfax portal (Resources → API Documentation).
-   * SHADOWFAX_ENVIRONMENT is only a fallback when BASE_URL is not set.
-   */
-  static resolveBaseUrl(partnerBaseUrl?: string | null): string {
-    const fromEnv = process.env.SHADOWFAX_BASE_URL?.trim();
-    if (fromEnv) return fromEnv.replace(/\/$/, '');
-    if (partnerBaseUrl) return partnerBaseUrl.replace(/\/$/, '');
-    return BASE_URLS[ShadowfaxClient.resolveEnvironment()];
+  static fromEnv(apiKey: string, partnerBaseUrl?: string | null): ShadowfaxClient {
+    return new ShadowfaxClient(apiKey, resolveShadowfaxBaseUrl(partnerBaseUrl));
   }
 
   private async request<T>(
@@ -100,10 +109,21 @@ export class ShadowfaxClient {
         (data as { message?: string }).message ||
         (data as { error?: string }).error ||
         `Shadowfax API error (${response.status})`;
-      throw new Error(message);
+      const err: any = new Error(message);
+      err.status = response.status;
+      err.body = data;
+      throw err;
     }
 
     return data as T;
+  }
+
+  async validateCreditsKey(creditsKey: string, storeBrandId: string) {
+    return this.request<{ is_valid?: boolean; message?: string }>(
+      'POST',
+      '/order/credits/key/validate/',
+      { credits_key: creditsKey, store_brand_id: storeBrandId },
+    );
   }
 
   async createOrder(
@@ -128,9 +148,6 @@ export class ShadowfaxClient {
   }
 }
 
-const INDIAN_MOBILE = /^[6-9]\d{9}$/;
-
-/** Normalize phone to 10-digit Indian mobile (6–9 prefix). */
 export function normalizeIndianPhone(phone?: string | null): string {
   if (!phone) return '9999999999';
   const digits = phone.replace(/\D/g, '');
@@ -147,15 +164,16 @@ export function isValidIndianMobile(phone?: string | null): boolean {
   return INDIAN_MOBILE.test(normalizeIndianPhone(phone));
 }
 
-/** Turn Shadowfax / config errors into a readable string for API responses. */
 export function formatShadowfaxError(error: unknown): string {
   if (typeof error === 'string') return error;
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) {
+    const body = (error as { body?: unknown }).body;
+    if (body) return `${error.message} — ${JSON.stringify(body)}`;
+    return error.message;
+  }
   if (error && typeof error === 'object') {
     const o = error as Record<string, unknown>;
     if (typeof o.message === 'string') return o.message;
-    if (typeof o.error === 'string') return o.error;
-    if (Array.isArray(o.errors)) return o.errors.map(String).join('; ');
     try {
       return JSON.stringify(error);
     } catch {

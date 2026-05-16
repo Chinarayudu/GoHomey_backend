@@ -37,7 +37,7 @@ services:
         sync: false
       - key: SHADOWFAX_CLIENT_CODE
         sync: false
+      - key: SHADOWFAX_API_MODE
+        value: testing
       - key: SHADOWFAX_BASE_URL
         sync: false
-      - key: SHADOWFAX_MOCK
-        value: "true"

@@ -4,6 +4,8 @@ import {
   normalizeIndianPhone,
   isValidIndianMobile,
   formatShadowfaxError,
+  resolveShadowfaxApiMode,
+  resolveShadowfaxBaseUrl,
   type ShadowfaxCreateOrderPayload,
 } from './shadowfax.client';
 
@@ -326,15 +328,9 @@ export class DeliveryService {
   ) {
     console.log(`[Shadowfax API] Pushing delivery ${deliveryId} to Shadowfax...`);
 
-    if (process.env.SHADOWFAX_MOCK === 'true') {
-      console.log('[Shadowfax MOCK] Skipping live API — simulated booking for QA');
-      return {
-        success: true,
-        external_order_id: `MOCK_${order.id.replace(/-/g, '').slice(0, 12)}`,
-        external_tracking_url: `https://gohomey-admin-port.vercel.app/track/mock/${order.id}`,
-        status: 'ASSIGNED',
-      };
-    }
+    const apiMode = resolveShadowfaxApiMode();
+    const apiBaseUrl = resolveShadowfaxBaseUrl(partner.base_url);
+    console.log(`[Shadowfax API] mode=${apiMode} base=${apiBaseUrl}`);
 
     const apiKey = process.env.SHADOWFAX_API_TOKEN || partner.api_key;
     const creditsKey =
@@ -373,12 +369,7 @@ export class DeliveryService {
       };
     }
 
-    const baseUrl = ShadowfaxClient.resolveBaseUrl(partner.base_url);
-    const client = new ShadowfaxClient(
-      apiKey,
-      ShadowfaxClient.resolveEnvironment(),
-      baseUrl,
-    );
+    const client = ShadowfaxClient.fromEnv(apiKey, partner.base_url);
 
     const isPrepaid = order.payment?.status === 'COMPLETED';
     const cashToCollect = isPrepaid ? 0 : order.total_price;
@@ -420,24 +411,35 @@ export class DeliveryService {
       const createResponse = await client.createOrder(payload);
 
       if (!createResponse.is_order_created) {
-        console.error('Shadowfax API Error:', createResponse);
-        return { success: false, error: createResponse };
+        console.error('Shadowfax create-order rejected:', createResponse);
+        return {
+          success: false,
+          error: createResponse.message || createResponse,
+        };
       }
 
+      console.log(
+        `[Shadowfax API] Order created flash_order_id=${createResponse.flash_order_id} message=${createResponse.message}`,
+      );
+
       let trackingUrl: string | undefined;
+      let sfxStatus: string | undefined;
       try {
         const trackResponse = await client.trackOrder(order.id);
         trackingUrl = trackResponse.tracking_url;
+        sfxStatus = trackResponse.status;
+        console.log(`[Shadowfax API] Track status=${sfxStatus}`);
       } catch (trackError) {
         console.warn('[Shadowfax API] Could not fetch tracking URL:', trackError);
       }
 
       return {
         success: true,
-        external_order_id:
-          createResponse.flash_order_id || order.id,
+        external_order_id: createResponse.flash_order_id || order.id,
         external_tracking_url: trackingUrl,
         status: 'ASSIGNED',
+        shadowfax_status: sfxStatus,
+        shadowfax_message: createResponse.message,
       };
     } catch (error) {
       console.error('Failed to call Shadowfax API:', error);

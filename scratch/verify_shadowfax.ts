@@ -1,48 +1,43 @@
 import 'dotenv/config';
-
-const token = process.env.SHADOWFAX_API_TOKEN;
-const creditsKey =
-  process.env.SHADOWFAX_CREDITS_KEY ||
-  process.env.SHADOWFAX_CLIENT_CODE ||
-  token;
-const baseUrl =
-  process.env.SHADOWFAX_BASE_URL || 'https://flash-api.shadowfax.in';
+import {
+  ShadowfaxClient,
+  resolveShadowfaxApiMode,
+  resolveShadowfaxBaseUrl,
+} from '../src/delivery/shadowfax.client';
 
 async function main() {
-  console.log('Shadowfax API check (use BASE_URL from your portal API docs)');
+  const token = process.env.SHADOWFAX_API_TOKEN;
+  const creditsKey =
+    process.env.SHADOWFAX_CREDITS_KEY ||
+    process.env.SHADOWFAX_CLIENT_CODE ||
+    token;
+  const storeBrandId = process.env.SHADOWFAX_CLIENT_CODE || creditsKey;
+  const baseUrl = resolveShadowfaxBaseUrl();
+  const mode = resolveShadowfaxApiMode();
+
+  console.log('Shadowfax credential check');
+  console.log('  API_MODE:', mode, '(testing = portal Testing Environment)');
   console.log('  BASE_URL:', baseUrl);
   console.log('  API_TOKEN:', token ? `${token.slice(0, 8)}…` : '(missing)');
-  console.log('  CREDITS_KEY:', creditsKey ? `${creditsKey.slice(0, 8)}…` : '(missing)');
 
   if (!token) {
-    console.error('\nSet SHADOWFAX_API_TOKEN in .env');
+    console.error('\nSet SHADOWFAX_API_TOKEN (Get Testing Token in portal)');
     process.exit(1);
   }
 
-  const res = await fetch(`${baseUrl}/order/credits/key/validate/`, {
-    method: 'POST',
-    headers: {
-      Authorization: token,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      credits_key: creditsKey,
-      store_brand_id: process.env.SHADOWFAX_CLIENT_CODE || creditsKey,
-    }),
-  });
+  const client = new ShadowfaxClient(token, baseUrl);
+  const body = await client.validateCreditsKey(creditsKey!, storeBrandId!);
+  console.log('\nValidate response:', body);
 
-  const body = await res.json();
-  console.log('\nValidate response:', res.status, body);
-
-  if (body.message?.includes('inactive or expired')) {
-    console.log(
-      '\n→ Token rejected. In the Shadowfax portal, copy the exact "Staging URL" from',
-    );
-    console.log('  Resources → API Documentation into SHADOWFAX_BASE_URL (not hlbackend.staging.* unless that is what they show).');
-    console.log('  Then click "Get Testing Token" again if needed.');
-  } else if (body.is_valid) {
-    console.log('\n→ Credentials look good. Try admin dispatch on READY_FOR_PICKUP orders.');
+  if (body.is_valid) {
+    console.log('\nOK — dispatch will call the testing Shadowfax API.');
+  } else if (JSON.stringify(body).includes('inactive or expired')) {
+    console.log('\nToken rejected by Shadowfax. Click "Get Testing Token" again in the portal.');
   }
 }
 
-main().catch(console.error);
+main().catch((e) => {
+  console.error('\nFailed:', e.message);
+  if ((e as { body?: unknown }).body) console.error('Body:', (e as any).body);
+  process.exit(1);
+});
