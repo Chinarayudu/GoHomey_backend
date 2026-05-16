@@ -16,7 +16,7 @@ async function createPartner() {
     is_active: true,
     api_key: process.env.SHADOWFAX_API_TOKEN,
     base_url:
-      process.env.SHADOWFAX_BASE_URL || 'https://hlbackend.staging.shadowfax.in',
+      process.env.SHADOWFAX_BASE_URL || 'https://flash-api.shadowfax.in',
   };
 
   const partner = existing

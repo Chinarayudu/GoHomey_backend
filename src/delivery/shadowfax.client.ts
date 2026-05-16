@@ -52,7 +52,7 @@ export class ShadowfaxClient {
 
   constructor(
     apiKey: string,
-    environment: ShadowfaxEnvironment = 'staging',
+    environment: ShadowfaxEnvironment = 'production',
     baseUrlOverride?: string,
   ) {
     this.apiKey = apiKey;
@@ -60,17 +60,22 @@ export class ShadowfaxClient {
   }
 
   static resolveEnvironment(): ShadowfaxEnvironment {
-    const env = (process.env.SHADOWFAX_ENVIRONMENT || 'staging').toLowerCase();
+    const env = (process.env.SHADOWFAX_ENVIRONMENT || 'production').toLowerCase();
     if (env === 'production' || env === 'staging' || env === 'staging1') {
       return env;
     }
-    return 'staging';
+    return 'production';
   }
 
+  /**
+   * Prefer SHADOWFAX_BASE_URL from the Shadowfax portal (Resources → API Documentation).
+   * SHADOWFAX_ENVIRONMENT is only a fallback when BASE_URL is not set.
+   */
   static resolveBaseUrl(partnerBaseUrl?: string | null): string {
+    const fromEnv = process.env.SHADOWFAX_BASE_URL?.trim();
+    if (fromEnv) return fromEnv.replace(/\/$/, '');
     if (partnerBaseUrl) return partnerBaseUrl.replace(/\/$/, '');
-    const env = ShadowfaxClient.resolveEnvironment();
-    return BASE_URLS[env];
+    return BASE_URLS[ShadowfaxClient.resolveEnvironment()];
   }
 
   private async request<T>(

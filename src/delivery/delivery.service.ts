@@ -326,17 +326,27 @@ export class DeliveryService {
   ) {
     console.log(`[Shadowfax API] Pushing delivery ${deliveryId} to Shadowfax...`);
 
+    if (process.env.SHADOWFAX_MOCK === 'true') {
+      console.log('[Shadowfax MOCK] Skipping live API — simulated booking for QA');
+      return {
+        success: true,
+        external_order_id: `MOCK_${order.id.replace(/-/g, '').slice(0, 12)}`,
+        external_tracking_url: `https://gohomey-admin-port.vercel.app/track/mock/${order.id}`,
+        status: 'ASSIGNED',
+      };
+    }
+
     const apiKey = process.env.SHADOWFAX_API_TOKEN || partner.api_key;
-    const creditsKey = process.env.SHADOWFAX_CREDITS_KEY;
+    const creditsKey =
+      process.env.SHADOWFAX_CREDITS_KEY ||
+      process.env.SHADOWFAX_CLIENT_CODE ||
+      apiKey;
 
     if (!apiKey) {
       return { success: false, error: 'Shadowfax API token is not configured on the server' };
     }
     if (!creditsKey) {
-      return {
-        success: false,
-        error: 'SHADOWFAX_CREDITS_KEY is not set on the server (required by Shadowfax Flash API)',
-      };
+      return { success: false, error: 'Shadowfax credits key is not configured' };
     }
     if (!userAddress?.address_line) {
       return {

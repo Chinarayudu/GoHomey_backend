@@ -35,7 +35,9 @@ services:
         sync: false
       - key: SHADOWFAX_CREDITS_KEY
         sync: false
-      - key: SHADOWFAX_ENVIRONMENT
-        value: staging
+      - key: SHADOWFAX_CLIENT_CODE
+        sync: false
       - key: SHADOWFAX_BASE_URL
-        value: https://hlbackend.staging.shadowfax.in
+        sync: false
+      - key: SHADOWFAX_MOCK
+        value: "true"
