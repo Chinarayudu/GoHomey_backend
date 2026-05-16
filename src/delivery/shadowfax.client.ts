@@ -123,6 +123,8 @@ export class ShadowfaxClient {
   }
 }
 
+const INDIAN_MOBILE = /^[6-9]\d{9}$/;
+
 /** Normalize phone to 10-digit Indian mobile (6–9 prefix). */
 export function normalizeIndianPhone(phone?: string | null): string {
   if (!phone) return '9999999999';
@@ -134,4 +136,26 @@ export function normalizeIndianPhone(phone?: string | null): string {
     return digits.slice(-10);
   }
   return '9999999999';
+}
+
+export function isValidIndianMobile(phone?: string | null): boolean {
+  return INDIAN_MOBILE.test(normalizeIndianPhone(phone));
+}
+
+/** Turn Shadowfax / config errors into a readable string for API responses. */
+export function formatShadowfaxError(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const o = error as Record<string, unknown>;
+    if (typeof o.message === 'string') return o.message;
+    if (typeof o.error === 'string') return o.error;
+    if (Array.isArray(o.errors)) return o.errors.map(String).join('; ');
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Shadowfax request failed';
+    }
+  }
+  return 'Shadowfax request failed';
 }

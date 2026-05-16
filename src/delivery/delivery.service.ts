@@ -2,6 +2,8 @@ import { prisma } from '../prisma/prisma.service';
 import {
   ShadowfaxClient,
   normalizeIndianPhone,
+  isValidIndianMobile,
+  formatShadowfaxError,
   type ShadowfaxCreateOrderPayload,
 } from './shadowfax.client';
 
@@ -178,12 +180,18 @@ export class DeliveryService {
           external_tracking_url: assigned.external_tracking_url ?? undefined,
         });
       } catch (error) {
-        console.error(`[Shadowfax] Failed to dispatch order ${order.id}:`, error);
+        const details = (error as { details?: unknown })?.details;
+        const errorMessage = details
+          ? formatShadowfaxError(details)
+          : error instanceof Error
+            ? error.message
+            : String(error);
+        console.error(`[Shadowfax] Failed to dispatch order ${order.id}:`, errorMessage, details ?? '');
         results.push({
           order_id: order.id,
           delivery_id: order.delivery?.id,
           status: 'failed',
-          error: error instanceof Error ? error.message : error,
+          error: errorMessage,
         });
       }
     }
@@ -322,12 +330,36 @@ export class DeliveryService {
     const creditsKey = process.env.SHADOWFAX_CREDITS_KEY;
 
     if (!apiKey) {
-      return { success: false, error: 'Shadowfax API token is not configured' };
+      return { success: false, error: 'Shadowfax API token is not configured on the server' };
     }
     if (!creditsKey) {
       return {
         success: false,
-        error: 'Shadowfax credits key is not configured (SHADOWFAX_CREDITS_KEY)',
+        error: 'SHADOWFAX_CREDITS_KEY is not set on the server (required by Shadowfax Flash API)',
+      };
+    }
+    if (!userAddress?.address_line) {
+      return {
+        success: false,
+        error: 'Customer has no default delivery address',
+      };
+    }
+    if (!chef.kitchen_address?.trim()) {
+      return {
+        success: false,
+        error: 'Chef kitchen_address is missing',
+      };
+    }
+    if (!isValidIndianMobile(chef.phone)) {
+      return {
+        success: false,
+        error: `Chef phone is not a valid Indian mobile: ${chef.phone}`,
+      };
+    }
+    if (!isValidIndianMobile(user.phone)) {
+      return {
+        success: false,
+        error: `Customer phone is not a valid Indian mobile: ${user.phone}`,
       };
     }
 
@@ -447,7 +479,7 @@ export class DeliveryService {
     );
 
     if (!externalResponse.success) {
-      const err: any = new Error('Failed to push order to Shadowfax');
+      const err: any = new Error(formatShadowfaxError(externalResponse.error));
       err.status = 500;
       err.details = externalResponse.error;
       throw err;
