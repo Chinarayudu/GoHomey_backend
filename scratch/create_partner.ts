@@ -1,15 +1,29 @@
+import 'dotenv/config';
 import { prisma } from '../src/prisma/prisma.service';
 
 async function createPartner() {
-  const partner = await prisma.deliveryPartner.create({
-    data: {
-      name: 'Borzo',
-      is_active: true,
-      api_key: process.env.BORZO_API_TOKEN || 'mock-key',
-      base_url: process.env.BORZO_BASE_URL || 'https://robotapitest-in.borzodelivery.com/api/business/1.6'
-    }
+  await prisma.deliveryPartner.updateMany({
+    where: { name: { equals: 'Borzo', mode: 'insensitive' } },
+    data: { is_active: false },
   });
-  console.log('Created Partner:', partner.id);
+
+  const existing = await prisma.deliveryPartner.findFirst({
+    where: { name: { equals: 'Shadowfax', mode: 'insensitive' } },
+  });
+
+  const data = {
+    name: 'Shadowfax',
+    is_active: true,
+    api_key: process.env.SHADOWFAX_API_TOKEN,
+    base_url:
+      process.env.SHADOWFAX_BASE_URL || 'https://hlbackend.staging.shadowfax.in',
+  };
+
+  const partner = existing
+    ? await prisma.deliveryPartner.update({ where: { id: existing.id }, data })
+    : await prisma.deliveryPartner.create({ data });
+
+  console.log('Shadowfax partner ready:', partner.id);
 }
 
 createPartner().finally(() => prisma.$disconnect());

@@ -1,4 +1,9 @@
 import { prisma } from '../prisma/prisma.service';
+import {
+  ShadowfaxClient,
+  normalizeIndianPhone,
+  type ShadowfaxCreateOrderPayload,
+} from './shadowfax.client';
 
 export class DeliveryService {
   async createDelivery(orderId: string, deliveryPartnerId?: string) {
@@ -56,13 +61,156 @@ export class DeliveryService {
     return delivery;
   }
 
+  async getShadowfaxPartner() {
+    const partner = await prisma.deliveryPartner.findFirst({
+      where: {
+        is_active: true,
+        name: { contains: 'Shadowfax', mode: 'insensitive' },
+      },
+    });
+
+    if (!partner) {
+      const err: any = new Error(
+        'Shadowfax delivery partner not found. Run scratch/create_partner.ts or add an active Shadowfax partner.',
+      );
+      err.status = 404;
+      throw err;
+    }
+
+    return partner;
+  }
+
+  /**
+   * One-click admin dispatch: READY_FOR_PICKUP orders → delivery records → Shadowfax.
+   * @param orderIds Optional subset of order IDs (from admin multi-select). When omitted, dispatches all eligible ready orders.
+   */
+  async dispatchReadyForPickupToShadowfax(orderIds?: string[]) {
+    const partner = await this.getShadowfaxPartner();
+
+    const readyOrders = await prisma.order.findMany({
+      where: {
+        status: 'READY_FOR_PICKUP',
+        ...(orderIds?.length ? { id: { in: orderIds } } : {}),
+        OR: [
+          { delivery: { is: null } },
+          { delivery: { status: 'PENDING' } },
+          { delivery: { status: 'FAILED' } },
+        ],
+      },
+      include: {
+        chef: true,
+        payment: true,
+        delivery: true,
+        user: {
+          include: {
+            addresses: {
+              where: { is_default: true },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: { updated_at: 'asc' },
+    });
+
+    if (readyOrders.length === 0) {
+      let hint = 'No orders with status READY_FOR_PICKUP are waiting for dispatch.';
+      if (orderIds?.length) {
+        const selected = await prisma.order.findMany({
+          where: { id: { in: orderIds } },
+          select: { id: true, status: true, delivery: { select: { status: true } } },
+        });
+        hint = selected.length
+          ? `Selected orders are not eligible: ${selected
+              .map((o) => `${o.id.slice(0, 8)}… status=${o.status} delivery=${o.delivery?.status ?? 'none'}`)
+              .join('; ')}`
+          : 'None of the selected order IDs were found.';
+      }
+      return {
+        message: 'No orders ready for pickup to dispatch',
+        hint,
+        total: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+        results: [],
+      };
+    }
+
+    const results: Array<{
+      order_id: string;
+      delivery_id?: string;
+      status: 'success' | 'failed' | 'skipped';
+      external_tracking_id?: string;
+      external_tracking_url?: string;
+      error?: unknown;
+    }> = [];
+
+    for (const order of readyOrders) {
+      if (order.delivery?.status === 'ASSIGNED') {
+        results.push({
+          order_id: order.id,
+          delivery_id: order.delivery.id,
+          status: 'skipped',
+          error: 'Already assigned to Shadowfax',
+        });
+        continue;
+      }
+
+      try {
+        let delivery = order.delivery;
+        if (!delivery) {
+          delivery = await this.createDelivery(order.id, partner.id);
+        }
+
+        const assigned = await this.assignToShadowfax(delivery.id, partner);
+
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'OUT_FOR_DELIVERY' },
+        });
+
+        results.push({
+          order_id: order.id,
+          delivery_id: assigned.id,
+          status: 'success',
+          external_tracking_id: assigned.external_tracking_id ?? undefined,
+          external_tracking_url: assigned.external_tracking_url ?? undefined,
+        });
+      } catch (error) {
+        console.error(`[Shadowfax] Failed to dispatch order ${order.id}:`, error);
+        results.push({
+          order_id: order.id,
+          delivery_id: order.delivery?.id,
+          status: 'failed',
+          error: error instanceof Error ? error.message : error,
+        });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.status === 'success').length;
+    const failed = results.filter((r) => r.status === 'failed').length;
+    const skipped = results.filter((r) => r.status === 'skipped').length;
+
+    return {
+      message:
+        failed === 0
+          ? `Dispatched ${succeeded} order(s) to Shadowfax`
+          : `Dispatched ${succeeded} order(s); ${failed} failed, ${skipped} skipped`,
+      total: readyOrders.length,
+      succeeded,
+      failed,
+      skipped,
+      results,
+    };
+  }
+
   async processBatchedDeliveries() {
     console.log('Processing batched deliveries...');
 
-    // Find orders that are confirmed but don't have a delivery record yet
     const pendingOrders = await prisma.order.findMany({
       where: {
-        status: 'CONFIRMED',
+        status: 'READY_FOR_PICKUP',
         // @ts-ignore
         delivery: { is: null },
       },
@@ -74,7 +222,6 @@ export class DeliveryService {
       return;
     }
 
-    // Group by chef_id
     const chefGroups = pendingOrders.reduce(
       (acc, order) => {
         if (!acc[order.chef_id]) acc[order.chef_id] = [];
@@ -96,7 +243,6 @@ export class DeliveryService {
         const delivery = await this.createDelivery(order.id);
         createdDeliveryIds.push(delivery.id);
 
-        // Update order status to out for delivery
         await prisma.order.update({
           where: { id: order.id },
           data: { status: 'OUT_FOR_DELIVERY' },
@@ -107,33 +253,17 @@ export class DeliveryService {
     return createdDeliveryIds;
   }
 
-  async autoDispatchBatchedDeliveries(partnerId?: string) {
-    const newDeliveryIds = await this.processBatchedDeliveries();
-    
-    if (!newDeliveryIds || newDeliveryIds.length === 0) {
-      return { message: 'No pending orders to dispatch', count: 0, deliveries: [] };
-    }
-
-    const assignedDeliveries: any[] = [];
-    for (const id of newDeliveryIds) {
-      try {
-        const result = await this.assignPartnerToDelivery(id, partnerId);
-        assignedDeliveries.push(result);
-      } catch (e) {
-        console.error(`Failed to auto-assign delivery ${id}:`, e);
-      }
-    }
-
-    return {
-      message: 'Successfully batched and assigned deliveries',
-      count: assignedDeliveries.length,
-      deliveries: assignedDeliveries
-    };
+  /** @deprecated Use dispatchReadyForPickupToShadowfax via POST /admin/deliveries/dispatch-shadowfax */
+  async autoDispatchBatchedDeliveries() {
+    return this.dispatchReadyForPickupToShadowfax();
   }
 
-  // --- Delivery Partner Management ---
-
-  async createDeliveryPartner(data: { name: string; phone_number?: string; api_key?: string; base_url?: string }) {
+  async createDeliveryPartner(data: {
+    name: string;
+    phone_number?: string;
+    api_key?: string;
+    base_url?: string;
+  }) {
     return prisma.deliveryPartner.create({
       data: {
         name: data.name,
@@ -150,79 +280,151 @@ export class DeliveryService {
     });
   }
 
-  async pushToBorzo(deliveryId: string, partner: any, order: any, chef: any, user: any, userAddress: any) {
-    console.log(`[Borzo API] Pushing delivery ${deliveryId} to Borzo...`);
+  private buildAddressLine(
+    addressLine?: string | null,
+    city?: string | null,
+    state?: string | null,
+    zip?: string | null,
+    fallback = 'Address not provided',
+  ): string {
+    if (!addressLine) return fallback;
+    return [addressLine, city, state, zip].filter(Boolean).join(', ');
+  }
 
-    const token = process.env.BORZO_API_TOKEN || partner.api_key;
-    const baseUrl = process.env.BORZO_BASE_URL || partner.base_url || 'https://robotapitest-in.borzodelivery.com/api/business/1.6';
+  async pushToShadowfax(
+    deliveryId: string,
+    partner: { api_key?: string | null; base_url?: string | null },
+    order: {
+      id: string;
+      total_price: number;
+      payment?: { status: string } | null;
+    },
+    chef: {
+      name: string;
+      phone: string;
+      kitchen_address?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+    },
+    user: { name: string; phone: string },
+    userAddress: {
+      address_line: string;
+      city: string;
+      state: string;
+      zip_code: string;
+      latitude?: number | null;
+      longitude?: number | null;
+    } | null,
+  ) {
+    console.log(`[Shadowfax API] Pushing delivery ${deliveryId} to Shadowfax...`);
 
-    const payload = {
-      matter: "Homey Food Delivery",
-      points: [
-        {
-          address: chef.kitchen_address || "Default Kitchen Address",
-          contact_person: {
-            phone: chef.phone || "9999999999",
-            name: chef.name || "Chef"
-          }
-        },
-        {
-          address: userAddress?.address_line ? `${userAddress.address_line}, ${userAddress.city}, ${userAddress.state} ${userAddress.zip_code}` : "Default User Address",
-          contact_person: {
-            phone: user.phone || "9999999999",
-            name: user.name || "Customer"
-          }
-        }
-      ]
+    const apiKey = process.env.SHADOWFAX_API_TOKEN || partner.api_key;
+    const creditsKey = process.env.SHADOWFAX_CREDITS_KEY;
+
+    if (!apiKey) {
+      return { success: false, error: 'Shadowfax API token is not configured' };
+    }
+    if (!creditsKey) {
+      return {
+        success: false,
+        error: 'Shadowfax credits key is not configured (SHADOWFAX_CREDITS_KEY)',
+      };
+    }
+
+    const baseUrl = ShadowfaxClient.resolveBaseUrl(partner.base_url);
+    const client = new ShadowfaxClient(
+      apiKey,
+      ShadowfaxClient.resolveEnvironment(),
+      baseUrl,
+    );
+
+    const isPrepaid = order.payment?.status === 'COMPLETED';
+    const cashToCollect = isPrepaid ? 0 : order.total_price;
+
+    const payload: ShadowfaxCreateOrderPayload = {
+      pickup_details: {
+        name: chef.name || 'Chef',
+        contact_number: normalizeIndianPhone(chef.phone),
+        address: chef.kitchen_address || 'Kitchen address not set',
+        latitude: chef.latitude ?? undefined,
+        longitude: chef.longitude ?? undefined,
+      },
+      drop_details: {
+        name: user.name || 'Customer',
+        contact_number: normalizeIndianPhone(user.phone),
+        address: this.buildAddressLine(
+          userAddress?.address_line,
+          userAddress?.city,
+          userAddress?.state,
+          userAddress?.zip_code,
+          'Customer address not set',
+        ),
+        latitude: userAddress?.latitude ?? undefined,
+        longitude: userAddress?.longitude ?? undefined,
+      },
+      order_details: {
+        order_id: order.id,
+        is_prepaid: isPrepaid,
+        cash_to_be_collected: cashToCollect,
+        delivery_charge_to_be_collected_from_customer: false,
+      },
+      user_details: {
+        contact_number: normalizeIndianPhone(user.phone),
+        credits_key: creditsKey,
+      },
     };
 
     try {
-      const response = await fetch(`${baseUrl}/create-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-DV-Auth-Token': token as string,
-        },
-        body: JSON.stringify(payload),
-      });
+      const createResponse = await client.createOrder(payload);
 
-      const data = await response.json();
+      if (!createResponse.is_order_created) {
+        console.error('Shadowfax API Error:', createResponse);
+        return { success: false, error: createResponse };
+      }
 
-      if (!response.ok || !data.is_successful) {
-        console.error("Borzo API Error:", data);
-        return { success: false, error: data };
+      let trackingUrl: string | undefined;
+      try {
+        const trackResponse = await client.trackOrder(order.id);
+        trackingUrl = trackResponse.tracking_url;
+      } catch (trackError) {
+        console.warn('[Shadowfax API] Could not fetch tracking URL:', trackError);
       }
 
       return {
         success: true,
-        borzo_order_id: data.order.order_id.toString(),
-        borzo_tracking_url: data.order.tracking_url || `https://borzodelivery.com/orders/${data.order.order_id}`,
-        status: data.order.status,
+        external_order_id:
+          createResponse.flash_order_id || order.id,
+        external_tracking_url: trackingUrl,
+        status: 'ASSIGNED',
       };
     } catch (error) {
-      console.error("Failed to call Borzo API:", error);
+      console.error('Failed to call Shadowfax API:', error);
       return { success: false, error };
     }
   }
 
-  async assignPartnerToDelivery(deliveryId: string, partnerId?: string) {
+  async assignToShadowfax(
+    deliveryId: string,
+    partner?: { id: string; api_key?: string | null; base_url?: string | null },
+  ) {
     const delivery = await prisma.delivery.findUnique({
       where: { id: deliveryId },
       include: {
         order: {
           include: {
             chef: true,
+            payment: true,
             user: {
               include: {
                 addresses: {
                   where: { is_default: true },
-                  take: 1
-                }
-              }
-            }
-          }
-        }
-      }
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!delivery) {
@@ -231,41 +433,39 @@ export class DeliveryService {
       throw err;
     }
 
-    let partner;
-    if (partnerId) {
-      partner = await prisma.deliveryPartner.findUnique({ where: { id: partnerId } });
-    } else {
-      partner = await prisma.deliveryPartner.findFirst({ where: { is_active: true } });
-    }
-
-    if (!partner) {
-      const err: any = new Error('Delivery partner not found. Please ensure Borzo is added as an active partner.');
-      err.status = 404;
-      throw err;
-    }
-
+    const shadowfaxPartner = partner ?? (await this.getShadowfaxPartner());
     const order = delivery.order;
     const userAddress = order.user.addresses[0] || null;
 
-    // Attempt to push to the external 3rd party API (Borzo)
-    const externalResponse = await this.pushToBorzo(deliveryId, partner, order, order.chef, order.user, userAddress);
+    const externalResponse = await this.pushToShadowfax(
+      deliveryId,
+      shadowfaxPartner,
+      order,
+      order.chef,
+      order.user,
+      userAddress,
+    );
 
     if (!externalResponse.success) {
-      const err: any = new Error('Failed to push to external delivery partner');
+      const err: any = new Error('Failed to push order to Shadowfax');
       err.status = 500;
+      err.details = externalResponse.error;
       throw err;
     }
 
-    // Update internal database
     return prisma.delivery.update({
       where: { id: deliveryId },
       data: {
-        partner_id: partner.id,
+        partner_id: shadowfaxPartner.id,
         status: 'ASSIGNED',
-        external_tracking_id: externalResponse.borzo_order_id,
-        external_tracking_url: externalResponse.borzo_tracking_url,
+        external_tracking_id: externalResponse.external_order_id,
+        external_tracking_url: externalResponse.external_tracking_url,
       },
     });
+  }
+
+  async assignPartnerToDelivery(deliveryId: string) {
+    return this.assignToShadowfax(deliveryId);
   }
 }
 

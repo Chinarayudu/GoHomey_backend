@@ -35,26 +35,8 @@ deliveryRouter.post(
 /**
  * @openapi
  * /delivery/auto-dispatch:
- *   post:
- *     summary: Process all pending deliveries into batches and auto-assign them to a delivery partner (Admin only)
- *     tags: [Delivery]
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               partner_id:
- *                 type: string
- *                 description: Optional ID of the delivery partner. If omitted, uses the first active partner.
- *     responses:
- *       200:
- *         description: Batched deliveries processed and assigned successfully
- *       400:
- *         description: Error processing batch or assigning
+ *     summary: Alias for POST /admin/deliveries/dispatch-shadowfax (Admin only)
+ *     deprecated: true
  */
 // POST /api/v1/delivery/auto-dispatch
 deliveryRouter.post(
@@ -63,8 +45,10 @@ deliveryRouter.post(
   checkRoles(Role.ADMIN),
   async (req, res, next) => {
     try {
-      const { partner_id } = req.body || {};
-      const result = await deliveryService.autoDispatchBatchedDeliveries(partner_id);
+      const orderIds = Array.isArray(req.body?.order_ids)
+        ? req.body.order_ids.filter((id: unknown) => typeof id === 'string')
+        : undefined;
+      const result = await deliveryService.dispatchReadyForPickupToShadowfax(orderIds);
       res.json(result);
     } catch (error) {
       next(error);
@@ -207,25 +191,14 @@ deliveryRouter.get('/partners', jwtAuth, checkRoles(Role.ADMIN), async (req, res
  *         name: id
  *         required: true
  *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [partner_id]
- *             properties:
- *               partner_id:
- *                 type: string
  *     responses:
  *       200:
- *         description: Successfully assigned delivery to partner and updated tracking info
+ *         description: Successfully assigned delivery to Shadowfax
  */
 // PATCH /api/v1/delivery/:id/assign
 deliveryRouter.patch('/:id/assign', jwtAuth, checkRoles(Role.ADMIN), async (req, res, next) => {
   try {
-    const { partner_id } = req.body;
-    const result = await deliveryService.assignPartnerToDelivery(req.params.id as string, partner_id);
+    const result = await deliveryService.assignPartnerToDelivery(req.params.id as string);
     res.json(result);
   } catch (error) {
     next(error);

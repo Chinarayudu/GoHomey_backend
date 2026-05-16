@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { adminService } from './admin.service';
+import { deliveryService } from '../delivery/delivery.service';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 
@@ -126,6 +127,31 @@ adminRouter.get('/orders', async (req, res, next) => {
 adminRouter.get('/orders/ready', async (req, res, next) => {
   try {
     const result = await adminService.getOrdersReadyForDelivery();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /admin/deliveries/dispatch-shadowfax:
+ *   post:
+ *     summary: Dispatch all ready-for-pickup orders to Shadowfax in one click (Admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dispatch summary with per-order results
+ */
+// POST /api/v1/admin/deliveries/dispatch-shadowfax
+adminRouter.post('/deliveries/dispatch-shadowfax', async (req, res, next) => {
+  try {
+    const orderIds = Array.isArray(req.body?.order_ids)
+      ? req.body.order_ids.filter((id: unknown) => typeof id === 'string')
+      : undefined;
+    const result = await deliveryService.dispatchReadyForPickupToShadowfax(orderIds);
     res.json(result);
   } catch (error) {
     next(error);

@@ -31,3 +31,11 @@ services:
         sync: false
       - key: TWILIO_PHONE_NUMBER
         sync: false
+      - key: SHADOWFAX_API_TOKEN
+        sync: false
+      - key: SHADOWFAX_CREDITS_KEY
+        sync: false
+      - key: SHADOWFAX_ENVIRONMENT
+        value: staging
+      - key: SHADOWFAX_BASE_URL
+        value: https://hlbackend.staging.shadowfax.in
