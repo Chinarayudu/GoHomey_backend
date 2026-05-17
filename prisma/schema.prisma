@@ -295,15 +295,20 @@ model OrderItem {
 }
 
 model Payment {
-  id            String        @id @default(uuid())
-  order_id      String        @unique
-  order         Order         @relation(fields: [order_id], references: [id])
-  amount        Float
-  status        PaymentStatus @default(PENDING)
-  gateway_id    String? // Razorpay payment ID
-  escrow_status String        @default("PENDING") // PENDING, HELD, RELEASED, REFUNDED
-  created_at    DateTime      @default(now())
-  updated_at    DateTime      @updatedAt
+  id                  String        @id @default(uuid())
+  order_id            String        @unique
+  order               Order         @relation(fields: [order_id], references: [id])
+  amount              Float
+  currency            String        @default("INR")
+  status              PaymentStatus @default(PENDING)
+  gateway_id          String? // Legacy gateway reference. For Razorpay this mirrors razorpay_order_id.
+  razorpay_order_id   String?       @unique
+  razorpay_payment_id String?       @unique
+  razorpay_signature  String?
+  razorpay_receipt    String?
+  escrow_status       String        @default("PENDING") // PENDING, HELD, RELEASED, REFUNDED
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
 }
 
 model DeliveryPartner {
