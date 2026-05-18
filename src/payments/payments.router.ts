@@ -21,6 +21,9 @@ const paymentsRouter = Router();
  *             properties:
  *               orderId:
  *                 type: string
+ *               amount:
+ *                 type: integer
+ *                 description: Optional frontend consistency check in paise. Backend calculates final amount as order total + platform fee.
  *     responses:
  *       200:
  *         description: Payment initiated
@@ -28,8 +31,8 @@ const paymentsRouter = Router();
 // POST /api/v1/payments/create
 paymentsRouter.post('/create', jwtAuth, async (req, res, next) => {
   try {
-    const { orderId } = req.body;
-    const result = await paymentsService.createPayment(orderId);
+    const { orderId, amount } = req.body;
+    const result = await paymentsService.createPayment(orderId, amount);
     res.json(result);
   } catch (error) {
     next(error);

@@ -52,6 +52,43 @@ function toPaise(amount: number): number {
   return Math.round(amount * 100);
 }
 
+function resolvePlatformFeePaise(): number {
+  const configuredFee = process.env.HOMEY_PLATFORM_FEE_RUPEES?.trim() || '20';
+  const feeRupees = Number(configuredFee);
+
+  if (!Number.isFinite(feeRupees) || feeRupees < 0) {
+    const error: any = new Error('HOMEY_PLATFORM_FEE_RUPEES must be a non-negative number');
+    error.status = 500;
+    throw error;
+  }
+
+  return toPaise(feeRupees);
+}
+
+function validateRequestedAmountPaise(
+  requestedAmount: unknown,
+  expectedAmountPaise: number,
+): void {
+  if (requestedAmount === undefined || requestedAmount === null || requestedAmount === '') {
+    return;
+  }
+
+  const amount = Number(requestedAmount);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    const error: any = new Error('amount must be a positive integer in paise');
+    error.status = 400;
+    throw error;
+  }
+
+  if (amount !== expectedAmountPaise) {
+    const error: any = new Error(
+      `Payment amount mismatch. Expected ${expectedAmountPaise} paise including platform fee`,
+    );
+    error.status = 400;
+    throw error;
+  }
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   const aBuffer = Buffer.from(a);
   const bBuffer = Buffer.from(b);
@@ -129,7 +166,7 @@ export class PaymentsService {
     return timingSafeEqual(expectedSignature, signature);
   }
 
-  async createPayment(orderId: string) {
+  async createPayment(orderId: string, requestedAmount?: unknown) {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: { payment: true },
@@ -147,19 +184,31 @@ export class PaymentsService {
       throw error;
     }
 
-    if (order.payment?.status === PaymentStatus.PENDING && order.payment.razorpay_order_id) {
+    const orderAmount = toPaise(order.total_price);
+    const platformFee = resolvePlatformFeePaise();
+    const amount = orderAmount + platformFee;
+    validateRequestedAmountPaise(requestedAmount, amount);
+
+    if (
+      order.payment?.status === PaymentStatus.PENDING &&
+      order.payment.razorpay_order_id &&
+      toPaise(order.payment.amount) === amount
+    ) {
       return {
         payment_id: order.payment.id,
         razorpay_order_id: order.payment.razorpay_order_id,
         razorpay_key_id: this.keyId,
         amount: toPaise(order.payment.amount),
         amount_rupees: order.payment.amount,
+        order_amount: orderAmount,
+        order_amount_rupees: order.total_price,
+        platform_fee: platformFee,
+        platform_fee_rupees: platformFee / 100,
         currency: order.payment.currency,
         status: order.payment.status,
       };
     }
 
-    const amount = toPaise(order.total_price);
     if (amount <= 0) {
       const error: any = new Error('Order amount must be greater than zero');
       error.status = 400;
@@ -175,6 +224,8 @@ export class PaymentsService {
         homey_order_id: order.id,
         chef_id: order.chef_id,
         user_id: order.user_id,
+        order_amount_paise: String(orderAmount),
+        platform_fee_paise: String(platformFee),
       },
     });
 
@@ -182,7 +233,7 @@ export class PaymentsService {
       ? await prisma.payment.update({
           where: { id: order.payment.id },
           data: {
-            amount: order.total_price,
+            amount: amount / 100,
             currency: razorpayOrder.currency,
             status: PaymentStatus.PENDING,
             gateway_id: razorpayOrder.id,
@@ -196,7 +247,7 @@ export class PaymentsService {
       : await prisma.payment.create({
           data: {
             order_id: orderId,
-            amount: order.total_price,
+            amount: amount / 100,
             currency: razorpayOrder.currency,
             status: PaymentStatus.PENDING,
             gateway_id: razorpayOrder.id,
@@ -212,6 +263,10 @@ export class PaymentsService {
       razorpay_key_id: this.keyId,
       amount: razorpayOrder.amount,
       amount_rupees: payment.amount,
+      order_amount: orderAmount,
+      order_amount_rupees: order.total_price,
+      platform_fee: platformFee,
+      platform_fee_rupees: platformFee / 100,
       currency: razorpayOrder.currency,
       status: payment.status,
     };

@@ -55,9 +55,20 @@ Request:
 
 ```json
 {
-  "orderId": "homey-order-uuid"
+  "orderId": "homey-order-uuid",
+  "amount": 6000
 }
 ```
+
+`amount` is optional and must be sent in paise. Send it when the frontend total includes extra charges such as platform fee. Example: `6000` means Rs. 60. If omitted, the backend uses the order's base `total_price`.
+
+Backend is the source of truth for the final payable amount. It currently calculates:
+
+```text
+final amount = order total + HOMEY_PLATFORM_FEE_RUPEES
+```
+
+`HOMEY_PLATFORM_FEE_RUPEES` defaults to `20`. If frontend sends `amount`, backend uses it only as a consistency check. If it does not match the backend-calculated total, the backend returns an error.
 
 Success response:
 
@@ -68,6 +79,10 @@ Success response:
   "razorpay_key_id": "rzp_test_xxxxx",
   "amount": 24900,
   "amount_rupees": 249,
+  "order_amount": 22900,
+  "order_amount_rupees": 229,
+  "platform_fee": 2000,
+  "platform_fee_rupees": 20,
   "currency": "INR",
   "status": "PENDING"
 }
@@ -75,6 +90,8 @@ Success response:
 
 Important:
 
+- Request `amount`, if sent, must match the backend-calculated final amount including platform fee.
+- Backend calculates the platform fee itself and rejects mismatched frontend totals.
 - `amount` is in paise because Razorpay Checkout expects paise.
 - `amount_rupees` is only for display/debugging.
 - `razorpay_key_id` is safe for the frontend.
@@ -93,6 +110,7 @@ Example:
 ```ts
 const paymentResponse = await api.post('/payments/create', {
   orderId,
+  amount: finalAmountInPaise,
 });
 
 const options = {

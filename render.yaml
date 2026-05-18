@@ -41,3 +41,5 @@ services:
         value: testing
       - key: SHADOWFAX_BASE_URL
         sync: false
+      - key: HOMEY_PLATFORM_FEE_RUPEES
+        value: "20"
