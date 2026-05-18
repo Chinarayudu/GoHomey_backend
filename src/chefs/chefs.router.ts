@@ -413,32 +413,31 @@ chefsRouter.patch(
  * @openapi
  * /chefs:
  *   get:
- *     summary: Get all chefs (with optional distance calculation)
+ *     summary: Get all approved chefs
  *     tags: [Chefs]
  *     parameters:
  *       - in: query
  *         name: lat
  *         schema: { type: number }
- *         description: User's current latitude for 3km radius filtering
+ *         description: Temporarily ignored. 3km radius filtering will be restored later.
  *       - in: query
  *         name: lng
  *         schema: { type: number }
- *         description: User's current longitude for 3km radius filtering
+ *         description: Temporarily ignored. 3km radius filtering will be restored later.
  *     responses:
  *       200:
- *         description: Successfully retrieved chefs within 3km, sorted by distance if coordinates provided
+ *         description: Successfully retrieved approved chefs
  */
 // GET /api/v1/chefs
 chefsRouter.get('/', optionalJwtAuth, async (req, res, next) => {
   try {
-    const { lat, lng } = req.query as any;
-    const user = req.user as any;
-
-    const latitude = lat ? parseFloat(lat as string) : user?.latitude;
-    const longitude = lng ? parseFloat(lng as string) : user?.longitude;
-
-    const coords = latitude && longitude ? { latitude, longitude } : undefined;
-    const result = await chefsService.findAll(coords);
+    // TODO: Restore user-to-chef 3km filtering after the delivery/serviceability flow is finalized.
+    // const { lat, lng } = req.query as any;
+    // const user = req.user as any;
+    // const latitude = lat ? parseFloat(lat as string) : user?.latitude;
+    // const longitude = lng ? parseFloat(lng as string) : user?.longitude;
+    // const coords = latitude && longitude ? { latitude, longitude } : undefined;
+    const result = await chefsService.findAll();
     res.json(result);
   } catch (error) {
     next(error);

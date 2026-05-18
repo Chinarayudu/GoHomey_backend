@@ -41,8 +41,15 @@ export class CartItemDto {
 
   @IsString()
   @IsNotEmpty()
-  @IsIn(['DAILY_MEAL', 'PANTRY_ITEM', 'SOCIAL_EVENT', 'FUEL_PLAN'])
-  type: 'DAILY_MEAL' | 'PANTRY_ITEM' | 'SOCIAL_EVENT' | 'FUEL_PLAN';
+  @IsIn(['DAILY_MEAL', 'MEAL', 'PANTRY_ITEM', 'PANTRY', 'SOCIAL_EVENT', 'SOCIAL', 'FUEL_PLAN'])
+  type:
+    | 'DAILY_MEAL'
+    | 'MEAL'
+    | 'PANTRY_ITEM'
+    | 'PANTRY'
+    | 'SOCIAL_EVENT'
+    | 'SOCIAL'
+    | 'FUEL_PLAN';
 
   @IsNumber()
   @IsNotEmpty()

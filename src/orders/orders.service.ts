@@ -3,6 +3,30 @@ import { ordersQueue } from '../common/queues/queues';
 import { Prisma } from '@prisma/client';
 import { isServiceWindowOpen } from '../common/utils/time';
 
+type CheckoutItemType =
+  | 'DAILY_MEAL'
+  | 'MEAL'
+  | 'PANTRY_ITEM'
+  | 'PANTRY'
+  | 'SOCIAL_EVENT'
+  | 'SOCIAL'
+  | 'FUEL_PLAN';
+
+type NormalizedCheckoutItemType = 'DAILY_MEAL' | 'PANTRY_ITEM' | 'SOCIAL_EVENT' | 'FUEL_PLAN';
+
+function normalizeCheckoutItemType(type: CheckoutItemType): NormalizedCheckoutItemType {
+  switch (type) {
+    case 'MEAL':
+      return 'DAILY_MEAL';
+    case 'PANTRY':
+      return 'PANTRY_ITEM';
+    case 'SOCIAL':
+      return 'SOCIAL_EVENT';
+    default:
+      return type;
+  }
+}
+
 export class OrdersService {
   async createDailyMealOrder(userId: string, mealId: string, quantity: number) {
     return prisma.$transaction(async (tx) => {
@@ -247,19 +271,20 @@ export class OrdersService {
     });
   }
 
-  async checkout(userId: string, items: { id: string; type: string; quantity: number }[]) {
+  async checkout(userId: string, items: { id: string; type: CheckoutItemType; quantity: number }[]) {
     return prisma.$transaction(async (tx) => {
       const orderGroups: Record<string, { chefId: string; items: any[]; totalPrice: number }> = {};
 
       // 1. Fetch all items and group them by chef
       for (const itemRequest of items) {
+        const itemType = normalizeCheckoutItemType(itemRequest.type);
         let itemData: any;
         let chefId: string;
         let price: number;
         let updateData: any = null;
         let updateModel: any = null;
 
-        switch (itemRequest.type) {
+        switch (itemType) {
           case 'DAILY_MEAL':
             itemData = await tx.dailyMeal.findUnique({ where: { id: itemRequest.id } });
             if (!itemData) throw new Error(`Meal ${itemRequest.id} not found`);
@@ -302,13 +327,13 @@ export class OrdersService {
 
         orderGroups[chefId].items.push({
           item_id: itemRequest.id,
-          type: itemRequest.type,
+          type: itemType,
           quantity: itemRequest.quantity,
           price,
           // Map to specific schema fields
-          daily_meal_id: itemRequest.type === 'DAILY_MEAL' ? itemRequest.id : null,
-          pantry_id: itemRequest.type === 'PANTRY_ITEM' ? itemRequest.id : null,
-          social_event_id: itemRequest.type === 'SOCIAL_EVENT' ? itemRequest.id : null,
+          daily_meal_id: itemType === 'DAILY_MEAL' ? itemRequest.id : null,
+          pantry_id: itemType === 'PANTRY_ITEM' ? itemRequest.id : null,
+          social_event_id: itemType === 'SOCIAL_EVENT' ? itemRequest.id : null,
         });
         orderGroups[chefId].totalPrice += price * itemRequest.quantity;
 

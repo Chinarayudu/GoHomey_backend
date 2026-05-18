@@ -226,32 +226,31 @@ export class ChefsService {
     });
   }
 
-  async findAll(coords?: { latitude: number; longitude: number }) {
+  async findAll(_coords?: { latitude: number; longitude: number }) {
     const chefs = await prisma.chef.findMany({
       where: {
         application_status: ChefApplicationStatus.APPROVED,
       },
     });
 
-    if (!coords) {
-      return chefs;
-    }
-
-    return chefs
-      .map((chef) => {
-        if (chef.latitude && chef.longitude) {
-          const distance = calculateDistance(
-            coords.latitude,
-            coords.longitude,
-            chef.latitude,
-            chef.longitude
-          );
-          return { ...chef, distance: parseFloat(distance.toFixed(2)) };
-        }
-        return { ...chef, distance: Infinity };
-      })
-      .filter((chef) => chef.distance <= 3)
-      .sort((a: any, b: any) => a.distance - b.distance);
+    // TODO: Restore user-to-chef 3km filtering after delivery/serviceability rules are finalized.
+    // if (!coords) return chefs;
+    // return chefs
+    //   .map((chef) => {
+    //     if (chef.latitude && chef.longitude) {
+    //       const distance = calculateDistance(
+    //         coords.latitude,
+    //         coords.longitude,
+    //         chef.latitude,
+    //         chef.longitude
+    //       );
+    //       return { ...chef, distance: parseFloat(distance.toFixed(2)) };
+    //     }
+    //     return { ...chef, distance: Infinity };
+    //   })
+    //   .filter((chef) => chef.distance <= 3)
+    //   .sort((a: any, b: any) => a.distance - b.distance);
+    return chefs;
   }
 
   async verifyChef(id: string, isVerified: boolean, trustTier?: number) {
