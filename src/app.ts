@@ -32,6 +32,10 @@ function makePublicUploadUrls(data: any, baseUrl: string): any {
     return data.startsWith('/uploads/') ? `${baseUrl}${data}` : data;
   }
 
+  if (data instanceof Date) {
+    return data;
+  }
+
   if (Array.isArray(data)) {
     return data.map((item) => makePublicUploadUrls(item, baseUrl));
   }
