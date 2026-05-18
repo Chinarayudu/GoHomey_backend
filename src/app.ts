@@ -25,6 +25,28 @@ import followsRouter from './follows/follows.router';
 import feedRouter from './feed/feed.router';
 
 const app: Express = express();
+app.set('trust proxy', 1);
+
+function makePublicUploadUrls(data: any, baseUrl: string): any {
+  if (typeof data === 'string') {
+    return data.startsWith('/uploads/') ? `${baseUrl}${data}` : data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map((item) => makePublicUploadUrls(item, baseUrl));
+  }
+
+  if (data && typeof data === 'object') {
+    return Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [
+        key,
+        makePublicUploadUrls(value, baseUrl),
+      ]),
+    );
+  }
+
+  return data;
+}
 
 // Security
 app.use(helmet({
@@ -46,6 +68,14 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true }));
 app.use(initializePassport());
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body?: any) => {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    return originalJson(makePublicUploadUrls(body, baseUrl));
+  };
+  next();
+});
 
 // API v1 prefix
 // Root route
