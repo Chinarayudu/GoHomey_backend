@@ -23,6 +23,8 @@ import socialRouter from './social/social.router';
 import webhooksRouter from './delivery/webhooks.router';
 import followsRouter from './follows/follows.router';
 import feedRouter from './feed/feed.router';
+import fuelRouter from './fuel/fuel.router';
+import notificationsRouter from './notifications/notifications.router';
 
 const app: Express = express();
 app.set('trust proxy', 1);
@@ -119,6 +121,8 @@ apiV1Router.use('/social', socialRouter);
 apiV1Router.use('/webhooks', webhooksRouter);
 apiV1Router.use('/follows', followsRouter);
 apiV1Router.use('/feed', feedRouter);
+apiV1Router.use('/fuel', fuelRouter);
+apiV1Router.use('/notifications', notificationsRouter);
 
 // Swagger setup
 apiV1Router.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

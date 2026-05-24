@@ -4,6 +4,7 @@ import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.
 import { validationMiddleware } from '../common/middleware/validation.middleware';
 import { ChefRegisterStep1Dto, ChefRegisterStep2Dto } from './dto/chef-register.dto';
 import { chefDocumentUpload } from '../common/middleware/upload.middleware';
+import { cloudinaryService } from '../common/services/cloudinary.service';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 const chefsRouter = Router();
@@ -204,10 +205,16 @@ chefsRouter.post(
         });
       }
 
+      const [governmentId, foodSafetyCert, kitchenPhoto] = await Promise.all([
+        cloudinaryService.uploadFile(files.government_id[0], 'homey/chef-documents'),
+        cloudinaryService.uploadFile(files.food_safety_cert[0], 'homey/chef-documents'),
+        cloudinaryService.uploadFile(files.kitchen_photo[0], 'homey/chef-documents'),
+      ]);
+
       const fileUrls = {
-        government_id_url: `/uploads/chef-documents/${files.government_id[0].filename}`,
-        food_safety_cert_url: `/uploads/chef-documents/${files.food_safety_cert[0].filename}`,
-        kitchen_photo_url: `/uploads/chef-documents/${files.kitchen_photo[0].filename}`,
+        government_id_url: governmentId.secure_url,
+        food_safety_cert_url: foodSafetyCert.secure_url,
+        kitchen_photo_url: kitchenPhoto.secure_url,
       };
 
       const result = await chefsService.registerStep3(user.id, fileUrls, user.phone);

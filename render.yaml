@@ -43,3 +43,11 @@ services:
         sync: false
       - key: HOMEY_PLATFORM_FEE_RUPEES
         value: "20"
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: FUEL_SCHEDULER_ENABLED
+        value: "true"

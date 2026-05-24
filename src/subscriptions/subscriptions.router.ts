@@ -6,6 +6,7 @@ import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 import { chefDocumentUpload } from '../common/middleware/upload.middleware';
+import { cloudinaryService } from '../common/services/cloudinary.service';
 
 const subscriptionsRouter = Router();
 
@@ -35,10 +36,11 @@ subscriptionsRouter.post(
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
+    const uploadedPlan = await cloudinaryService.uploadFile(req.file, 'homey/diet-plans');
     res.json({
       status: 'success',
       message: 'Custom plan uploaded successfully',
-      file_url: `/uploads/chef-documents/${req.file.filename}`,
+      file_url: uploadedPlan.secure_url,
     });
   }
 );

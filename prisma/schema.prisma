@@ -72,6 +72,24 @@ enum FaultType {
   CUSTOMER
 }
 
+enum FuelSubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  COMPLETED
+}
+
+enum FuelFulfillmentStatus {
+  SCHEDULED
+  COOKING
+  READY_FOR_PICKUP
+  PICKED_UP
+  DELIVERED
+  PAUSED
+  MISSED
+  CANCELLED
+}
+
 model User {
   id         String   @id @default(uuid())
   name       String
@@ -93,6 +111,21 @@ model User {
   follows   Follow[]  @relation("UserFollows")
   orders    Order[]
   addresses Address[]
+  fuel_subscriptions FuelSubscription[]
+  push_tokens DevicePushToken[]
+}
+
+model DevicePushToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id])
+  token      String   @unique
+  platform   String?
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([user_id, is_active])
 }
 
 model Address {
@@ -134,6 +167,7 @@ model Chef {
   latitude        Float?
   longitude       Float?
   max_capacity    Int?     @default(10)
+  max_concurrent_slots_per_hour Int @default(15)
   appliances      String[] @default([])
 
   // Step 3: Security & Verification
@@ -156,6 +190,8 @@ model Chef {
   meals         DailyMeal[]
   pantry        PantryItem[]
   fuel_slots    FuelSlot[]
+  fuel_subscriptions FuelSubscription[]
+  fuel_fulfillments  FuelDailyFulfillment[]
   social_events SocialEvent[]
   orders        Order[]
 }
@@ -195,6 +231,10 @@ model FuelPlan {
   goal        String
   description String
   price       Float
+  duration_days     Int     @default(30)
+  price_to_customer Float?
+  fixed_chef_payout Float?
+  sop_document_url  String?
   menu_json   Json
   calories    Int?
   protein     Int?
@@ -204,6 +244,7 @@ model FuelPlan {
   updated_at  DateTime @updatedAt
 
   slots FuelSlot[]
+  subscriptions FuelSubscription[]
 }
 
 model FuelSlot {
@@ -218,6 +259,46 @@ model FuelSlot {
   created_at      DateTime @default(now())
 
   order_items OrderItem[]
+}
+
+model FuelSubscription {
+  id                 String                 @id @default(uuid())
+  user_id            String
+  user               User                   @relation(fields: [user_id], references: [id])
+  plan_id            String
+  plan               FuelPlan               @relation(fields: [plan_id], references: [id])
+  assigned_chef_id   String
+  assigned_chef      Chef                   @relation(fields: [assigned_chef_id], references: [id])
+  status             FuelSubscriptionStatus @default(ACTIVE)
+  start_date         DateTime
+  end_date           DateTime
+  delivery_time_slot String
+  created_at         DateTime               @default(now())
+  updated_at         DateTime               @updatedAt
+
+  fulfillments FuelDailyFulfillment[]
+
+  @@index([user_id])
+  @@index([assigned_chef_id, delivery_time_slot, status])
+}
+
+model FuelDailyFulfillment {
+  id                        String                @id @default(uuid())
+  subscription_id           String
+  subscription              FuelSubscription      @relation(fields: [subscription_id], references: [id])
+  chef_id                   String
+  chef                      Chef                  @relation(fields: [chef_id], references: [id])
+  fulfillment_date          DateTime
+  delivery_time_slot        String
+  delivery_status           FuelFulfillmentStatus @default(SCHEDULED)
+  chef_batch_photo_url      String?
+  weight_verification_grams Int?
+  chef_reminder_sent_at     DateTime?
+  created_at                DateTime              @default(now())
+  updated_at                DateTime              @updatedAt
+
+  @@unique([subscription_id, fulfillment_date])
+  @@index([chef_id, fulfillment_date, delivery_time_slot])
 }
 
 model PantryItem {

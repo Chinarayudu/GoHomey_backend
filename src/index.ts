@@ -4,6 +4,7 @@ import 'reflect-metadata';
 import app from './app';
 import { connectPrisma } from './prisma/prisma.service';
 import { setupOrdersWorker } from './orders/order.processor';
+import { setupFuelScheduler } from './fuel/fuel.scheduler';
 
 dotenv.config();
 
@@ -19,6 +20,7 @@ async function bootstrap() {
 
   // Initialize Workers
   setupOrdersWorker();
+  setupFuelScheduler();
 
   // Start Express Server
   app.listen(port, () => {

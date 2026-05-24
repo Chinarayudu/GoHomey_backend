@@ -4,6 +4,7 @@ import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.
 import { Role } from '@prisma/client';
 import { mealImageUpload, batchProofUpload } from '../common/middleware/upload.middleware';
 import { prisma } from '../prisma/prisma.service';
+import { cloudinaryService } from '../common/services/cloudinary.service';
 
 const mealsRouter = Router();
 
@@ -55,11 +56,15 @@ mealsRouter.post(
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
       }
 
+      const uploadedMealImage = req.file
+        ? await cloudinaryService.uploadFile(req.file, 'homey/meals')
+        : null;
+
       const mealData = {
         ...req.body,
         price: parseFloat(req.body.price),
         slots_total: parseInt(req.body.slots_total),
-        image_url: req.file ? `/uploads/meals/${req.file.filename}` : undefined,
+        image_url: uploadedMealImage?.secure_url,
       };
 
       const result = await mealsService.create(chef.id, mealData);
@@ -123,7 +128,8 @@ mealsRouter.post(
         return res.status(400).json({ status: 'error', message: 'Batch proof photo is required' });
       }
 
-      const proofUrl = `/uploads/proofs/${req.file.filename}`;
+      const uploadedProof = await cloudinaryService.uploadFile(req.file, 'homey/proofs');
+      const proofUrl = uploadedProof.secure_url;
       const result = await mealsService.update(req.params.id as string, chef.id, {
         batch_photo_url: proofUrl,
       });

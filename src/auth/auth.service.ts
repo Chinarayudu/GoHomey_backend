@@ -67,12 +67,10 @@ export class AuthService {
 
   async sendOtp(phone: string) {
     const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
-    // Store in Redis with TTL 5 minutes (300 seconds)
-    await redisClient.setex(`OTP:${phone}`, 300, otp);
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromPhone = process.env.TWILIO_PHONE_NUMBER;
+    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+    const fromPhone = process.env.TWILIO_PHONE_NUMBER?.trim();
 
     if (accountSid && authToken && fromPhone) {
       const message = `Your GoHomeyy verification code is ${otp}. Valid for 5 min.`;
@@ -93,13 +91,34 @@ export class AuthService {
           })
         });
         const data = await response.json();
-        console.log('[Twilio Response]:', data);
+
+        if (!response.ok) {
+          console.error('[Twilio Error Response]:', data);
+          const err: any = new Error(
+            data?.message === 'Authenticate'
+              ? 'Twilio authentication failed. Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN.'
+              : data?.message || 'Twilio failed to send OTP',
+          );
+          err.status = 502;
+          err.details = data;
+          throw err;
+        }
+
+        console.log('[Twilio OTP Sent]:', {
+          sid: data?.sid,
+          status: data?.status,
+          to: phone,
+        });
       } catch (err) {
         console.error('[Twilio Error]:', err);
+        throw err;
       }
     } else {
       console.log(`[Mock SMS] Sending OTP ${otp} to phone ${phone}`);
     }
+
+    // Store OTP only after Twilio accepts the SMS request, or immediately in mock mode.
+    await redisClient.setex(`OTP:${phone}`, 300, otp);
 
     return { message: 'OTP sent successfully' };
   }
