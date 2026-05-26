@@ -46,6 +46,11 @@ function signUploadParams(params: Record<string, string>, apiSecret: string) {
   return crypto.createHash('sha1').update(`${stringToSign}${apiSecret}`).digest('hex');
 }
 
+function maskCredential(value?: string) {
+  if (!value) return '(missing)';
+  return `${value.slice(0, 4)}...${value.slice(-4)} len=${value.length}`;
+}
+
 export class CloudinaryService {
   private get cloudinaryUrl() {
     return parseCloudinaryUrl();
@@ -98,6 +103,15 @@ export class CloudinaryService {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+      console.error('[Cloudinary Upload Error]', {
+        cloud_name: maskCredential(this.cloudName),
+        api_key: maskCredential(this.apiKey),
+        api_secret: maskCredential(this.apiSecret),
+        has_cloudinary_url: Boolean(process.env.CLOUDINARY_URL?.trim()),
+        folder,
+        status: response.status,
+        response: data,
+      });
       const message =
         (data as { error?: { message?: string } }).error?.message ||
         `Cloudinary upload failed (${response.status})`;
