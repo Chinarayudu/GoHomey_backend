@@ -226,11 +226,14 @@ export class ChefsService {
     });
   }
 
-  async findAll(_coords?: { latitude: number; longitude: number }) {
+  async findAll(_coords?: { latitude: number; longitude: number }, options: { includeAll?: boolean } = {}) {
     const chefs = await prisma.chef.findMany({
-      where: {
-        application_status: ChefApplicationStatus.APPROVED,
-      },
+      where: options.includeAll
+        ? {}
+        : {
+            application_status: ChefApplicationStatus.APPROVED,
+          },
+      orderBy: { created_at: 'desc' },
     });
 
     // TODO: Restore user-to-chef 3km filtering after delivery/serviceability rules are finalized.

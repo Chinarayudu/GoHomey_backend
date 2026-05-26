@@ -153,7 +153,12 @@ export class AdminService {
 
   async getChefs(filters: { applicationStatus?: any; isVerified?: boolean } = {}) {
     const where: any = {};
-    if (filters.applicationStatus) where.application_status = filters.applicationStatus;
+    if (
+      filters.applicationStatus &&
+      String(filters.applicationStatus).toLowerCase() !== 'all'
+    ) {
+      where.application_status = filters.applicationStatus;
+    }
     if (filters.isVerified !== undefined) where.is_verified = filters.isVerified;
 
     return prisma.chef.findMany({

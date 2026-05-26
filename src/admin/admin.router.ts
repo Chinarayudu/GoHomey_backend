@@ -236,8 +236,13 @@ adminRouter.patch('/orders/:id/status', async (req, res, next) => {
 adminRouter.get('/chefs', async (req, res, next) => {
   try {
     const { applicationStatus, isVerified } = req.query;
+    const normalizedApplicationStatus =
+      typeof applicationStatus === 'string' &&
+      ['all', 'ALL', 'All', ''].includes(applicationStatus)
+        ? undefined
+        : applicationStatus;
     const result = await adminService.getChefs({
-      applicationStatus,
+      applicationStatus: normalizedApplicationStatus,
       isVerified: isVerified === 'true' ? true : isVerified === 'false' ? false : undefined,
     });
     res.json(result);

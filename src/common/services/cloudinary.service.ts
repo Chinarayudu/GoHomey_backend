@@ -20,7 +20,10 @@ function requireEnv(name: string): string {
 }
 
 function parseCloudinaryUrl() {
-  const rawUrl = process.env.CLOUDINARY_URL?.trim();
+  const rawValue = process.env.CLOUDINARY_URL?.trim();
+  const rawUrl = rawValue?.startsWith('CLOUDINARY_URL=')
+    ? rawValue.slice('CLOUDINARY_URL='.length).trim()
+    : rawValue;
   if (!rawUrl) return null;
 
   try {
@@ -56,19 +59,40 @@ export class CloudinaryService {
     return parseCloudinaryUrl();
   }
 
+  private warnIfCredentialSourcesDisagree() {
+    const urlConfig = this.cloudinaryUrl;
+    if (!urlConfig) return;
+
+    const splitCloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+    const splitApiKey = process.env.CLOUDINARY_API_KEY?.trim();
+    const splitApiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+
+    const mismatches = [
+      splitCloudName && splitCloudName !== urlConfig.cloudName ? 'CLOUDINARY_CLOUD_NAME' : null,
+      splitApiKey && splitApiKey !== urlConfig.apiKey ? 'CLOUDINARY_API_KEY' : null,
+      splitApiSecret && splitApiSecret !== urlConfig.apiSecret ? 'CLOUDINARY_API_SECRET' : null,
+    ].filter(Boolean);
+
+    if (mismatches.length > 0) {
+      console.warn('[Cloudinary Config Warning] CLOUDINARY_URL disagrees with split env vars:', mismatches);
+    }
+  }
+
   private get cloudName() {
-    return process.env.CLOUDINARY_CLOUD_NAME?.trim() || this.cloudinaryUrl?.cloudName || requireEnv('CLOUDINARY_CLOUD_NAME');
+    return this.cloudinaryUrl?.cloudName || process.env.CLOUDINARY_CLOUD_NAME?.trim() || requireEnv('CLOUDINARY_CLOUD_NAME');
   }
 
   private get apiKey() {
-    return process.env.CLOUDINARY_API_KEY?.trim() || this.cloudinaryUrl?.apiKey || requireEnv('CLOUDINARY_API_KEY');
+    return this.cloudinaryUrl?.apiKey || process.env.CLOUDINARY_API_KEY?.trim() || requireEnv('CLOUDINARY_API_KEY');
   }
 
   private get apiSecret() {
-    return process.env.CLOUDINARY_API_SECRET?.trim() || this.cloudinaryUrl?.apiSecret || requireEnv('CLOUDINARY_API_SECRET');
+    return this.cloudinaryUrl?.apiSecret || process.env.CLOUDINARY_API_SECRET?.trim() || requireEnv('CLOUDINARY_API_SECRET');
   }
 
   async uploadFile(file: Express.Multer.File, folder: string): Promise<CloudinaryUploadResponse> {
+    this.warnIfCredentialSourcesDisagree();
+
     if (!file?.buffer?.length) {
       const error: any = new Error('Uploaded file is empty');
       error.status = 400;
