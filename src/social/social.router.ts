@@ -5,6 +5,8 @@ import { CreateSocialEventDto, UpdateSocialEventDto } from './dto/social.dto';
 import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
+import { mealImageUpload } from '../common/middleware/upload.middleware';
+import { cloudinaryService } from '../common/services/cloudinary.service';
 
 const socialRouter = Router();
 
@@ -50,7 +52,7 @@ const socialRouter = Router();
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             $ref: '#/components/schemas/CreateSocialEventDto'
  *     responses:
@@ -61,6 +63,7 @@ socialRouter.post(
   '/',
   jwtAuth,
   checkRoles(Role.CHEF),
+  mealImageUpload.single('event_image'),
   validationMiddleware(CreateSocialEventDto),
   async (req, res, next) => {
     try {
@@ -77,7 +80,14 @@ socialRouter.post(
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const result = await socialService.create(chef.id, req.body);
+      const uploadedEventImage = req.file
+        ? await cloudinaryService.uploadFile(req.file, 'homey/social-events')
+        : null;
+
+      const result = await socialService.create(chef.id, {
+        ...req.body,
+        image_url: uploadedEventImage?.secure_url || req.body.image_url,
+      });
       res.status(201).json({ status: 'success', data: result });
     } catch (error) {
       next(error);
@@ -190,7 +200,7 @@ socialRouter.get('/:id', async (req, res, next) => {
  *         schema: { type: string }
  *     requestBody:
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             $ref: '#/components/schemas/UpdateSocialEventDto'
  *     responses:
@@ -201,6 +211,7 @@ socialRouter.patch(
   '/:id',
   jwtAuth,
   checkRoles(Role.CHEF),
+  mealImageUpload.single('event_image'),
   validationMiddleware(UpdateSocialEventDto),
   async (req, res, next) => {
     try {
@@ -217,7 +228,14 @@ socialRouter.patch(
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const result = await socialService.update(req.params.id as string, chef.id, req.body);
+      const uploadedEventImage = req.file
+        ? await cloudinaryService.uploadFile(req.file, 'homey/social-events')
+        : null;
+
+      const result = await socialService.update(req.params.id as string, chef.id, {
+        ...req.body,
+        image_url: uploadedEventImage?.secure_url || req.body.image_url,
+      });
       res.json({ status: 'success', data: result });
     } catch (error) {
       next(error);

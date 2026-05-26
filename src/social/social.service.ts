@@ -2,8 +2,29 @@ import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 
 export class SocialService {
+  private toNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
+  }
+
+  private toBoolean(value: unknown): boolean | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    return Boolean(value);
+  }
+
   async create(chefId: string, data: any): Promise<any> {
     const { date, end_date, latitude, longitude, slots_male_total, slots_female_total, ...rest } = data;
+    const price = this.toNumber(data.price);
+    const slotsTotal = this.toNumber(data.slots_total);
+
+    if (price === undefined || slotsTotal === undefined) {
+      const error: any = new Error('price and slots_total are required');
+      error.status = 400;
+      throw error;
+    }
     
     // Default end_date to date if not provided by frontend
     const eventEndDate = end_date ? new Date(end_date) : new Date(date);
@@ -11,10 +32,13 @@ export class SocialService {
     return prisma.socialEvent.create({
       data: {
         ...rest,
+        price,
+        slots_total: slotsTotal,
+        social_balance: this.toBoolean(data.social_balance) ?? false,
         date: new Date(date),
         end_date: eventEndDate,
         chef_id: chefId,
-        slots_remaining: data.slots_total,
+        slots_remaining: slotsTotal,
       },
     });
   }
@@ -156,6 +180,22 @@ export class SocialService {
 
     const { latitude, longitude, slots_male_total, slots_female_total, ...rest } = data;
     const updateData: any = { ...rest };
+
+    if (updateData.price !== undefined) {
+      updateData.price = this.toNumber(updateData.price);
+    }
+    if (updateData.slots_total !== undefined) {
+      updateData.slots_total = this.toNumber(updateData.slots_total);
+    }
+    if (updateData.social_balance !== undefined) {
+      updateData.social_balance = this.toBoolean(updateData.social_balance);
+    }
+    if (updateData.date !== undefined) {
+      updateData.date = new Date(updateData.date);
+    }
+    if (updateData.end_date !== undefined) {
+      updateData.end_date = new Date(updateData.end_date);
+    }
 
     // If slots_total is updated, we need to adjust slots_remaining
     if (updateData.slots_total !== undefined) {
