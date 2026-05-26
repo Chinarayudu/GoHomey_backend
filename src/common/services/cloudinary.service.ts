@@ -19,6 +19,24 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function parseCloudinaryUrl() {
+  const rawUrl = process.env.CLOUDINARY_URL?.trim();
+  if (!rawUrl) return null;
+
+  try {
+    const url = new URL(rawUrl);
+    return {
+      cloudName: url.hostname,
+      apiKey: decodeURIComponent(url.username),
+      apiSecret: decodeURIComponent(url.password),
+    };
+  } catch {
+    const error: any = new Error('CLOUDINARY_URL is invalid');
+    error.status = 500;
+    throw error;
+  }
+}
+
 function signUploadParams(params: Record<string, string>, apiSecret: string) {
   const stringToSign = Object.keys(params)
     .sort()
@@ -29,16 +47,20 @@ function signUploadParams(params: Record<string, string>, apiSecret: string) {
 }
 
 export class CloudinaryService {
+  private get cloudinaryUrl() {
+    return parseCloudinaryUrl();
+  }
+
   private get cloudName() {
-    return requireEnv('CLOUDINARY_CLOUD_NAME');
+    return process.env.CLOUDINARY_CLOUD_NAME?.trim() || this.cloudinaryUrl?.cloudName || requireEnv('CLOUDINARY_CLOUD_NAME');
   }
 
   private get apiKey() {
-    return requireEnv('CLOUDINARY_API_KEY');
+    return process.env.CLOUDINARY_API_KEY?.trim() || this.cloudinaryUrl?.apiKey || requireEnv('CLOUDINARY_API_KEY');
   }
 
   private get apiSecret() {
-    return requireEnv('CLOUDINARY_API_SECRET');
+    return process.env.CLOUDINARY_API_SECRET?.trim() || this.cloudinaryUrl?.apiSecret || requireEnv('CLOUDINARY_API_SECRET');
   }
 
   async uploadFile(file: Express.Multer.File, folder: string): Promise<CloudinaryUploadResponse> {
