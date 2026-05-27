@@ -377,18 +377,6 @@ export class OrdersService {
             throw new Error(`Unsupported item type: ${itemRequest.type}`);
         }
 
-        const chef = await tx.chef.findUnique({
-          where: { id: chefId },
-          select: { user_id: true },
-        });
-
-        if (chef?.user_id === userId) {
-          throw createHttpError(
-            'You cannot checkout your own item or event',
-            400,
-          );
-        }
-
         // Initialize group if not exists
         if (!orderGroups[chefId]) {
           orderGroups[chefId] = { chefId, items: [], totalPrice: 0 };
