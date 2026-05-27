@@ -63,7 +63,10 @@ socialRouter.post(
   '/',
   jwtAuth,
   checkRoles(Role.CHEF),
-  mealImageUpload.single('event_image'),
+  mealImageUpload.fields([
+    { name: 'event_image', maxCount: 1 },
+    { name: 'image', maxCount: 1 },
+  ]),
   validationMiddleware(CreateSocialEventDto),
   async (req, res, next) => {
     try {
@@ -80,8 +83,10 @@ socialRouter.post(
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const uploadedEventImage = req.file
-        ? await cloudinaryService.uploadFile(req.file, 'homey/social-events')
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const eventImage = files?.event_image?.[0] || files?.image?.[0];
+      const uploadedEventImage = eventImage
+        ? await cloudinaryService.uploadFile(eventImage, 'homey/social-events')
         : null;
 
       const result = await socialService.create(chef.id, {
@@ -211,7 +216,10 @@ socialRouter.patch(
   '/:id',
   jwtAuth,
   checkRoles(Role.CHEF),
-  mealImageUpload.single('event_image'),
+  mealImageUpload.fields([
+    { name: 'event_image', maxCount: 1 },
+    { name: 'image', maxCount: 1 },
+  ]),
   validationMiddleware(UpdateSocialEventDto),
   async (req, res, next) => {
     try {
@@ -228,8 +236,10 @@ socialRouter.patch(
         return res.status(403).json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const uploadedEventImage = req.file
-        ? await cloudinaryService.uploadFile(req.file, 'homey/social-events')
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const eventImage = files?.event_image?.[0] || files?.image?.[0];
+      const uploadedEventImage = eventImage
+        ? await cloudinaryService.uploadFile(eventImage, 'homey/social-events')
         : null;
 
       const result = await socialService.update(req.params.id as string, chef.id, {
