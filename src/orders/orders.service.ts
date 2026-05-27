@@ -12,9 +12,15 @@ type CheckoutItemType =
   | 'SOCIAL'
   | 'FUEL_PLAN';
 
-type NormalizedCheckoutItemType = 'DAILY_MEAL' | 'PANTRY_ITEM' | 'SOCIAL_EVENT' | 'FUEL_PLAN';
+type NormalizedCheckoutItemType =
+  | 'DAILY_MEAL'
+  | 'PANTRY_ITEM'
+  | 'SOCIAL_EVENT'
+  | 'FUEL_PLAN';
 
-function normalizeCheckoutItemType(type: CheckoutItemType): NormalizedCheckoutItemType {
+function normalizeCheckoutItemType(
+  type: CheckoutItemType,
+): NormalizedCheckoutItemType {
   switch (type) {
     case 'MEAL':
       return 'DAILY_MEAL';
@@ -25,6 +31,12 @@ function normalizeCheckoutItemType(type: CheckoutItemType): NormalizedCheckoutIt
     default:
       return type;
   }
+}
+
+function createHttpError(message: string, status: number) {
+  const error: any = new Error(message);
+  error.status = status;
+  return error;
 }
 
 export class OrdersService {
@@ -148,9 +160,16 @@ export class OrdersService {
     });
   }
 
-  async createPantryOrder(userId: string, itemId: string, quantity: number, deliveryWindow?: string) {
+  async createPantryOrder(
+    userId: string,
+    itemId: string,
+    quantity: number,
+    deliveryWindow?: string,
+  ) {
     if (!deliveryWindow) {
-      const error: any = new Error('Pantry items must select a delivery window (piggyback)');
+      const error: any = new Error(
+        'Pantry items must select a delivery window (piggyback)',
+      );
       error.status = 400;
       throw error;
     }
@@ -239,7 +258,13 @@ export class OrdersService {
 
     if (statusGroup === 'active') {
       where.status = {
-        in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'],
+        in: [
+          'PENDING',
+          'CONFIRMED',
+          'PREPARING',
+          'READY_FOR_PICKUP',
+          'OUT_FOR_DELIVERY',
+        ],
       };
     } else if (statusGroup === 'completed') {
       where.status = {
@@ -271,12 +296,28 @@ export class OrdersService {
     });
   }
 
-  async checkout(userId: string, items: { id: string; type: CheckoutItemType; quantity: number }[]) {
+  async checkout(
+    userId: string,
+    items: { id: string; type: CheckoutItemType; quantity: number }[],
+  ) {
     return prisma.$transaction(async (tx) => {
-      const orderGroups: Record<string, { chefId: string; items: any[]; totalPrice: number }> = {};
+      const orderGroups: Record<
+        string,
+        { chefId: string; items: any[]; totalPrice: number }
+      > = {};
 
       // 1. Fetch all items and group them by chef
       for (const itemRequest of items) {
+        if (
+          !Number.isInteger(itemRequest.quantity) ||
+          itemRequest.quantity <= 0
+        ) {
+          throw createHttpError(
+            'Item quantity must be a positive integer',
+            400,
+          );
+        }
+
         const itemType = normalizeCheckoutItemType(itemRequest.type);
         let itemData: any;
         let chefId: string;
@@ -286,20 +327,30 @@ export class OrdersService {
 
         switch (itemType) {
           case 'DAILY_MEAL':
-            itemData = await tx.dailyMeal.findUnique({ where: { id: itemRequest.id } });
+            itemData = await tx.dailyMeal.findUnique({
+              where: { id: itemRequest.id },
+            });
             if (!itemData) throw new Error(`Meal ${itemRequest.id} not found`);
-            if (!isServiceWindowOpen(itemData)) throw new Error(`Ordering is closed for ${itemData.meal_name}`);
-            if (itemData.slots_remaining < itemRequest.quantity) throw new Error(`Not enough slots for ${itemData.meal_name}`);
+            if (!isServiceWindowOpen(itemData))
+              throw new Error(`Ordering is closed for ${itemData.meal_name}`);
+            if (itemData.slots_remaining < itemRequest.quantity)
+              throw new Error(`Not enough slots for ${itemData.meal_name}`);
             chefId = itemData.chef_id;
             price = itemData.price;
             updateModel = tx.dailyMeal;
-            updateData = { slots_remaining: { decrement: itemRequest.quantity } };
+            updateData = {
+              slots_remaining: { decrement: itemRequest.quantity },
+            };
             break;
 
           case 'PANTRY_ITEM':
-            itemData = await tx.pantryItem.findUnique({ where: { id: itemRequest.id } });
-            if (!itemData) throw new Error(`Pantry item ${itemRequest.id} not found`);
-            if (itemData.inventory < itemRequest.quantity) throw new Error(`Not enough inventory for ${itemData.name}`);
+            itemData = await tx.pantryItem.findUnique({
+              where: { id: itemRequest.id },
+            });
+            if (!itemData)
+              throw new Error(`Pantry item ${itemRequest.id} not found`);
+            if (itemData.inventory < itemRequest.quantity)
+              throw new Error(`Not enough inventory for ${itemData.name}`);
             chefId = itemData.chef_id;
             price = itemData.price;
             updateModel = tx.pantryItem;
@@ -307,17 +358,35 @@ export class OrdersService {
             break;
 
           case 'SOCIAL_EVENT':
-            itemData = await tx.socialEvent.findUnique({ where: { id: itemRequest.id } });
-            if (!itemData) throw new Error(`Social event ${itemRequest.id} not found`);
-            if (itemData.slots_remaining < itemRequest.quantity) throw new Error(`Not enough slots for ${itemData.title}`);
+            itemData = await tx.socialEvent.findUnique({
+              where: { id: itemRequest.id },
+            });
+            if (!itemData)
+              throw new Error(`Social event ${itemRequest.id} not found`);
+            if (itemData.slots_remaining < itemRequest.quantity)
+              throw new Error(`Not enough slots for ${itemData.title}`);
             chefId = itemData.chef_id;
             price = itemData.price;
             updateModel = tx.socialEvent;
-            updateData = { slots_remaining: { decrement: itemRequest.quantity } };
+            updateData = {
+              slots_remaining: { decrement: itemRequest.quantity },
+            };
             break;
 
           default:
             throw new Error(`Unsupported item type: ${itemRequest.type}`);
+        }
+
+        const chef = await tx.chef.findUnique({
+          where: { id: chefId },
+          select: { user_id: true },
+        });
+
+        if (chef?.user_id === userId) {
+          throw createHttpError(
+            'You cannot checkout your own item or event',
+            400,
+          );
         }
 
         // Initialize group if not exists
