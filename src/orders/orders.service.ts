@@ -39,6 +39,35 @@ function createHttpError(message: string, status: number) {
   return error;
 }
 
+function resolvePlatformFeeRupees(): number {
+  const configuredFee = process.env.HOMEY_PLATFORM_FEE_RUPEES?.trim() || '20';
+  const feeRupees = Number(configuredFee);
+
+  if (!Number.isFinite(feeRupees) || feeRupees < 0) {
+    return 20;
+  }
+
+  return feeRupees;
+}
+
+function addOrderAmountBreakdown<T extends { total_price: number; payment?: { amount: number } | null }>(
+  order: T,
+) {
+  const paidAmount = order.payment?.amount;
+  const platformFee =
+    paidAmount === undefined || paidAmount === null
+      ? resolvePlatformFeeRupees()
+      : Math.max(Number((paidAmount - order.total_price).toFixed(2)), 0);
+  const payableAmount = paidAmount ?? Number((order.total_price + platformFee).toFixed(2));
+
+  return {
+    ...order,
+    order_amount: order.total_price,
+    platform_fee: platformFee,
+    payable_amount: payableAmount,
+  };
+}
+
 export class OrdersService {
   async createDailyMealOrder(userId: string, mealId: string, quantity: number) {
     return prisma.$transaction(async (tx) => {
@@ -242,7 +271,7 @@ export class OrdersService {
   }
 
   async findUserOrders(userId: string) {
-    return prisma.order.findMany({
+    const orders = await prisma.order.findMany({
       where: { user_id: userId },
       include: {
         items: true,
@@ -251,6 +280,8 @@ export class OrdersService {
       },
       orderBy: { created_at: 'desc' },
     });
+
+    return orders.map(addOrderAmountBreakdown);
   }
 
   async findChefOrders(chefId: string, statusGroup?: 'active' | 'completed') {
