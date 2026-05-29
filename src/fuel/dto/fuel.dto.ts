@@ -1,4 +1,12 @@
-import { IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsArray,
+} from 'class-validator';
 
 export class CreateFuelPlanDto {
   @IsString()
@@ -27,6 +35,11 @@ export class CreateFuelPlanDto {
   @IsOptional()
   @IsString()
   sop_document_url?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty()
+  delivery_time_slots: string[];
 
   @IsNotEmpty()
   menu_json: any;
@@ -65,6 +78,12 @@ export class CreateFuelSubscriptionDto {
   delivery_time_slot: string;
 }
 
+export class CreateFuelSlotDto {
+  @IsString()
+  @IsNotEmpty()
+  plan_id: string;
+}
+
 export class PauseFuelSubscriptionDto {
   @IsDateString()
   pause_from: string;
@@ -74,6 +93,15 @@ export class PauseFuelSubscriptionDto {
 }
 
 export class UpdateFulfillmentStatusDto {
-  @IsIn(['SCHEDULED', 'COOKING', 'READY_FOR_PICKUP', 'PICKED_UP', 'DELIVERED', 'PAUSED', 'MISSED', 'CANCELLED'])
+  @IsIn([
+    'SCHEDULED',
+    'COOKING',
+    'READY_FOR_PICKUP',
+    'PICKED_UP',
+    'DELIVERED',
+    'PAUSED',
+    'MISSED',
+    'CANCELLED',
+  ])
   status: string;
 }

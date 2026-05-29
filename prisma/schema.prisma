@@ -235,6 +235,7 @@ model FuelPlan {
   price_to_customer Float?
   fixed_chef_payout Float?
   sop_document_url  String?
+  delivery_time_slots String[] @default([])
   menu_json   Json
   calories    Int?
   protein     Int?

@@ -1,4 +1,8 @@
-import { ChefApplicationStatus, FuelFulfillmentStatus, FuelSubscriptionStatus } from '@prisma/client';
+import {
+  ChefApplicationStatus,
+  FuelFulfillmentStatus,
+  FuelSubscriptionStatus,
+} from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 import { calculateDistance } from '../common/utils/location';
 import { notificationsService } from '../notifications/notifications.service';
@@ -18,7 +22,11 @@ function addDays(date: Date, days: number) {
 }
 
 function inclusiveDayCount(from: Date, to: Date) {
-  return Math.floor((startOfDay(to).getTime() - startOfDay(from).getTime()) / 86400000) + 1;
+  return (
+    Math.floor(
+      (startOfDay(to).getTime() - startOfDay(from).getTime()) / 86400000,
+    ) + 1
+  );
 }
 
 function parseDate(value: string, field: string) {
@@ -31,10 +39,37 @@ function parseDate(value: string, field: string) {
   return startOfDay(date);
 }
 
+function normalizeTimeSlots(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      value
+        .map(String)
+        .map((slot) => slot.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function serializeFuelSlot(slot: any) {
+  return {
+    id: slot.id,
+    chef_id: slot.chef_id,
+    plan_id: slot.plan_id,
+    time_slot: slot.time_slot,
+    created_at: slot.created_at,
+    ...(slot.plan ? { plan: slot.plan } : {}),
+  };
+}
+
 export class FuelService {
   async createPlan(data: any) {
     const price = Number(data.price ?? data.price_to_customer);
     const durationDays = Number(data.duration_days ?? 30);
+    const deliveryTimeSlots = normalizeTimeSlots(data.delivery_time_slots);
 
     if (!Number.isFinite(price) || price <= 0) {
       const error: any = new Error('Fuel plan price must be greater than zero');
@@ -44,6 +79,14 @@ export class FuelService {
 
     if (!Number.isInteger(durationDays) || durationDays <= 0) {
       const error: any = new Error('duration_days must be a positive integer');
+      error.status = 400;
+      throw error;
+    }
+
+    if (!deliveryTimeSlots.length) {
+      const error: any = new Error(
+        'delivery_time_slots must include at least one time slot',
+      );
       error.status = 400;
       throw error;
     }
@@ -58,6 +101,7 @@ export class FuelService {
         price_to_customer: data.price_to_customer ?? price,
         fixed_chef_payout: data.fixed_chef_payout,
         sop_document_url: data.sop_document_url,
+        delivery_time_slots: deliveryTimeSlots,
         menu_json: data.menu_json,
         calories: data.calories,
         protein: data.protein,
@@ -71,6 +115,92 @@ export class FuelService {
     return prisma.fuelPlan.findMany({
       orderBy: { created_at: 'desc' },
     });
+  }
+
+  async listChefPlanCatalog(chefId: string) {
+    const plans = await prisma.fuelPlan.findMany({
+      include: {
+        slots: {
+          where: { chef_id: chefId },
+          orderBy: { time_slot: 'asc' },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return plans.map((plan) => ({
+      ...plan,
+      is_enabled_for_chef: plan.slots.length > 0,
+      chef_slots: plan.slots.map(serializeFuelSlot),
+    }));
+  }
+
+  async enableChefPlan(chefId: string, data: { plan_id: string }) {
+    const plan = await prisma.fuelPlan.findUnique({
+      where: { id: data.plan_id },
+    });
+    if (!plan) {
+      const error: any = new Error('Fuel plan not found');
+      error.status = 404;
+      throw error;
+    }
+
+    if (!plan.delivery_time_slots.length) {
+      const error: any = new Error(
+        'Fuel plan does not have admin-defined delivery timings',
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    const slots: any[] = [];
+    for (const timeSlot of plan.delivery_time_slots) {
+      const existing = await prisma.fuelSlot.findFirst({
+        where: {
+          chef_id: chefId,
+          plan_id: data.plan_id,
+          time_slot: timeSlot,
+        },
+      });
+
+      if (existing) {
+        slots.push(
+          await prisma.fuelSlot.findUnique({
+            where: { id: existing.id },
+            include: { plan: true },
+          }),
+        );
+        continue;
+      }
+
+      slots.push(
+        await prisma.fuelSlot.create({
+          data: {
+            chef_id: chefId,
+            plan_id: data.plan_id,
+            time_slot: timeSlot,
+            capacity: 0,
+            slots_remaining: 0,
+          },
+          include: { plan: true },
+        }),
+      );
+    }
+
+    return {
+      message: `Enabled Fuel plan for ${slots.length} admin-defined time slot(s)`,
+      slots: slots.filter(Boolean).map(serializeFuelSlot),
+    };
+  }
+
+  async listChefSlots(chefId: string) {
+    const slots = await prisma.fuelSlot.findMany({
+      where: { chef_id: chefId },
+      include: { plan: true },
+      orderBy: [{ time_slot: 'asc' }, { created_at: 'desc' }],
+    });
+
+    return slots.map(serializeFuelSlot);
   }
 
   async getPlan(id: string) {
@@ -93,12 +223,15 @@ export class FuelService {
   private async getChefCapacity(chefId: string, timeSlot: string) {
     const chef = await prisma.chef.findUnique({ where: { id: chefId } });
     if (!chef || chef.application_status !== ChefApplicationStatus.APPROVED) {
-      const error: any = new Error('Approved chef not found for Fuel fulfillment');
+      const error: any = new Error(
+        'Approved chef not found for Fuel fulfillment',
+      );
       error.status = 404;
       throw error;
     }
 
-    const capacity = chef.max_concurrent_slots_per_hour || chef.max_capacity || 15;
+    const capacity =
+      chef.max_concurrent_slots_per_hour || chef.max_capacity || 15;
     const activeFuelCount = await prisma.fuelSubscription.count({
       where: {
         assigned_chef_id: chefId,
@@ -116,46 +249,82 @@ export class FuelService {
   }
 
   async createSubscription(userId: string, data: any) {
-    const plan = await prisma.fuelPlan.findUnique({ where: { id: data.plan_id } });
+    const plan = await prisma.fuelPlan.findUnique({
+      where: { id: data.plan_id },
+    });
     if (!plan) {
       const error: any = new Error('Fuel plan not found');
       error.status = 404;
       throw error;
     }
 
-    const startDate = parseDate(data.start_date, 'start_date');
-    const endDate = addDays(startDate, (plan.duration_days || 30) - 1);
-    const capacity = await this.getChefCapacity(data.assigned_chef_id, data.delivery_time_slot);
+    if (!plan.delivery_time_slots.includes(data.delivery_time_slot)) {
+      const error: any = new Error(
+        'Selected delivery_time_slot is not available for this Fuel plan',
+      );
+      error.status = 400;
+      throw error;
+    }
 
-    if (capacity.remaining <= 0) {
-      const error: any = new Error('Chef is at Fuel capacity for this time slot');
+    const chefSlot = await prisma.fuelSlot.findFirst({
+      where: {
+        chef_id: data.assigned_chef_id,
+        plan_id: plan.id,
+        time_slot: data.delivery_time_slot,
+      },
+    });
+
+    if (!chefSlot) {
+      const error: any = new Error(
+        'Selected chef is not available for this Fuel plan and time slot',
+      );
       error.status = 409;
       throw error;
     }
 
-    const subscription = await prisma.fuelSubscription.create({
-      data: {
-        user_id: userId,
-        plan_id: plan.id,
-        assigned_chef_id: data.assigned_chef_id,
-        start_date: startDate,
-        end_date: endDate,
-        delivery_time_slot: data.delivery_time_slot,
-      },
-      include: {
-        plan: true,
-        assigned_chef: {
-          select: {
-            id: true,
-            name: true,
-            kitchen_name: true,
-            phone: true,
+    const startDate = parseDate(data.start_date, 'start_date');
+    const endDate = addDays(startDate, (plan.duration_days || 30) - 1);
+    const capacity = await this.getChefCapacity(
+      data.assigned_chef_id,
+      data.delivery_time_slot,
+    );
+
+    if (capacity.remaining <= 0) {
+      const error: any = new Error(
+        'Chef is at Fuel capacity for this time slot',
+      );
+      error.status = 409;
+      throw error;
+    }
+
+    const subscription = await prisma.$transaction(async (tx) => {
+      return tx.fuelSubscription.create({
+        data: {
+          user_id: userId,
+          plan_id: plan.id,
+          assigned_chef_id: data.assigned_chef_id,
+          start_date: startDate,
+          end_date: endDate,
+          delivery_time_slot: data.delivery_time_slot,
+        },
+        include: {
+          plan: true,
+          assigned_chef: {
+            select: {
+              id: true,
+              name: true,
+              kitchen_name: true,
+              phone: true,
+            },
           },
         },
-      },
+      });
     });
 
-    await this.generateFulfillments(FULFILLMENT_LOOKAHEAD_DAYS, subscription.id);
+    await this.generateFulfillments(
+      FULFILLMENT_LOOKAHEAD_DAYS,
+      subscription.id,
+    );
 
     return subscription;
   }
@@ -202,7 +371,9 @@ export class FuelService {
     }
 
     if (subscription.status !== FuelSubscriptionStatus.ACTIVE) {
-      const error: any = new Error('Only active Fuel subscriptions can be paused');
+      const error: any = new Error(
+        'Only active Fuel subscriptions can be paused',
+      );
       error.status = 400;
       throw error;
     }
@@ -217,7 +388,9 @@ export class FuelService {
 
     const bufferCutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
     if (pauseFrom.getTime() < bufferCutoff.getTime()) {
-      const error: any = new Error('Fuel subscription pauses require at least 24 hours notice');
+      const error: any = new Error(
+        'Fuel subscription pauses require at least 24 hours notice',
+      );
       error.status = 400;
       throw error;
     }
@@ -255,12 +428,18 @@ export class FuelService {
       });
     });
 
-    await this.generateFulfillments(FULFILLMENT_LOOKAHEAD_DAYS, subscription.id);
+    await this.generateFulfillments(
+      FULFILLMENT_LOOKAHEAD_DAYS,
+      subscription.id,
+    );
 
     return updated;
   }
 
-  async generateFulfillments(daysAhead = FULFILLMENT_LOOKAHEAD_DAYS, subscriptionId?: string) {
+  async generateFulfillments(
+    daysAhead = FULFILLMENT_LOOKAHEAD_DAYS,
+    subscriptionId?: string,
+  ) {
     const today = startOfDay(new Date());
     const horizon = addDays(today, daysAhead);
 
@@ -274,8 +453,14 @@ export class FuelService {
     const created: string[] = [];
 
     for (const subscription of subscriptions) {
-      const from = subscription.start_date > today ? startOfDay(subscription.start_date) : today;
-      const to = subscription.end_date < horizon ? startOfDay(subscription.end_date) : horizon;
+      const from =
+        subscription.start_date > today
+          ? startOfDay(subscription.start_date)
+          : today;
+      const to =
+        subscription.end_date < horizon
+          ? startOfDay(subscription.end_date)
+          : horizon;
 
       for (let date = from; date <= to; date = addDays(date, 1)) {
         const fulfillment = await prisma.fuelDailyFulfillment.upsert({
@@ -322,16 +507,26 @@ export class FuelService {
     });
   }
 
-  async updateFulfillmentStatus(fulfillmentId: string, status: FuelFulfillmentStatus) {
+  async updateFulfillmentStatus(
+    fulfillmentId: string,
+    status: FuelFulfillmentStatus,
+  ) {
     return prisma.fuelDailyFulfillment.update({
       where: { id: fulfillmentId },
       data: { delivery_status: status },
     });
   }
 
-  async submitWeighIn(fulfillmentId: string, chefId: string, photoUrl: string, grams: number) {
+  async submitWeighIn(
+    fulfillmentId: string,
+    chefId: string,
+    photoUrl: string,
+    grams: number,
+  ) {
     if (!Number.isInteger(grams) || grams <= 0) {
-      const error: any = new Error('weight_verification_grams must be a positive integer');
+      const error: any = new Error(
+        'weight_verification_grams must be a positive integer',
+      );
       error.status = 400;
       throw error;
     }
@@ -356,7 +551,11 @@ export class FuelService {
     });
   }
 
-  async findFuelNowChefs(latitude: number, longitude: number, timeSlot?: string) {
+  async findFuelNowChefs(
+    latitude: number,
+    longitude: number,
+    timeSlot?: string,
+  ) {
     const chefs = await prisma.chef.findMany({
       where: {
         application_status: ChefApplicationStatus.APPROVED,
@@ -379,7 +578,12 @@ export class FuelService {
 
     for (const chef of chefs) {
       if (chef.latitude === null || chef.longitude === null) continue;
-      const distance = calculateDistance(latitude, longitude, chef.latitude, chef.longitude);
+      const distance = calculateDistance(
+        latitude,
+        longitude,
+        chef.latitude,
+        chef.longitude,
+      );
       if (distance > 1) continue;
 
       const activeFuelCount = await prisma.fuelSubscription.count({
@@ -389,7 +593,8 @@ export class FuelService {
           status: FuelSubscriptionStatus.ACTIVE,
         },
       });
-      const capacity = chef.max_concurrent_slots_per_hour || chef.max_capacity || 15;
+      const capacity =
+        chef.max_concurrent_slots_per_hour || chef.max_capacity || 15;
       if (activeFuelCount >= capacity) continue;
 
       withinRange.push({
@@ -406,8 +611,12 @@ export class FuelService {
 
   async sendPrepReminders(hoursBefore = 3) {
     const now = new Date();
-    const windowStart = new Date(now.getTime() + hoursBefore * 60 * 60 * 1000 - 10 * 60 * 1000);
-    const windowEnd = new Date(now.getTime() + hoursBefore * 60 * 60 * 1000 + 10 * 60 * 1000);
+    const windowStart = new Date(
+      now.getTime() + hoursBefore * 60 * 60 * 1000 - 10 * 60 * 1000,
+    );
+    const windowEnd = new Date(
+      now.getTime() + hoursBefore * 60 * 60 * 1000 + 10 * 60 * 1000,
+    );
 
     const fulfillments = await prisma.fuelDailyFulfillment.findMany({
       where: {
