@@ -2,11 +2,29 @@ import { Router, Request, Response } from 'express';
 import { pantryService } from './pantry.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
 import { CreatePantryDto, UpdatePantryDto } from './dto/pantry.dto';
-import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.middleware';
+import {
+  jwtAuth,
+  checkRoles,
+  optionalJwtAuth,
+} from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
+import { mealImageUpload } from '../common/middleware/upload.middleware';
+import { cloudinaryService } from '../common/services/cloudinary.service';
 
 const pantryRouter = Router();
+
+function coercePantryFields(req: Request, _res: Response, next: any) {
+  if (req.body.price !== undefined) {
+    req.body.price = Number(req.body.price);
+  }
+
+  if (req.body.inventory !== undefined) {
+    req.body.inventory = Number(req.body.inventory);
+  }
+
+  next();
+}
 
 /**
  * @openapi
@@ -38,28 +56,41 @@ pantryRouter.post(
   '/',
   jwtAuth,
   checkRoles(Role.CHEF),
+  mealImageUpload.single('image'),
+  coercePantryFields,
   validationMiddleware(CreatePantryDto),
   async (req, res, next) => {
     try {
       const chef = await prisma.chef.findFirst({
         where: {
-          OR: [
-            { id: (req.user as any).id },
-            { user_id: (req.user as any).id }
-          ]
-        }
+          OR: [{ id: (req.user as any).id }, { user_id: (req.user as any).id }],
+        },
       });
 
       if (!chef) {
-        return res.status(403).json({ status: 'error', message: 'User is not a chef' });
+        return res
+          .status(403)
+          .json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const result = await pantryService.create(chef.id, req.body);
+      let imageUrl = req.body.image_url;
+      if (req.file) {
+        const uploaded = await cloudinaryService.uploadFile(
+          req.file,
+          'homey/pantry',
+        );
+        imageUrl = uploaded.secure_url;
+      }
+
+      const result = await pantryService.create(chef.id, {
+        ...req.body,
+        image_url: imageUrl,
+      });
       res.status(201).json(result);
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 /**
@@ -150,28 +181,45 @@ pantryRouter.patch(
   '/:id',
   jwtAuth,
   checkRoles(Role.CHEF),
+  mealImageUpload.single('image'),
+  coercePantryFields,
   validationMiddleware(UpdatePantryDto),
   async (req, res, next) => {
     try {
       const chef = await prisma.chef.findFirst({
         where: {
-          OR: [
-            { id: (req.user as any).id },
-            { user_id: (req.user as any).id }
-          ]
-        }
+          OR: [{ id: (req.user as any).id }, { user_id: (req.user as any).id }],
+        },
       });
 
       if (!chef) {
-        return res.status(403).json({ status: 'error', message: 'User is not a chef' });
+        return res
+          .status(403)
+          .json({ status: 'error', message: 'User is not a chef' });
       }
 
-      const result = await pantryService.update(req.params.id as string, chef.id, req.body);
+      let imageUrl = req.body.image_url;
+      if (req.file) {
+        const uploaded = await cloudinaryService.uploadFile(
+          req.file,
+          'homey/pantry',
+        );
+        imageUrl = uploaded.secure_url;
+      }
+
+      const result = await pantryService.update(
+        req.params.id as string,
+        chef.id,
+        {
+          ...req.body,
+          ...(imageUrl ? { image_url: imageUrl } : {}),
+        },
+      );
       res.json(result);
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 /**
@@ -192,26 +240,30 @@ pantryRouter.patch(
  *         description: Pantry item deleted
  */
 // DELETE /api/v1/pantry/:id
-pantryRouter.delete('/:id', jwtAuth, checkRoles(Role.CHEF), async (req, res, next) => {
-  try {
-    const chef = await prisma.chef.findFirst({
-      where: {
-        OR: [
-          { id: (req.user as any).id },
-          { user_id: (req.user as any).id }
-        ]
+pantryRouter.delete(
+  '/:id',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req, res, next) => {
+    try {
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [{ id: (req.user as any).id }, { user_id: (req.user as any).id }],
+        },
+      });
+
+      if (!chef) {
+        return res
+          .status(403)
+          .json({ status: 'error', message: 'User is not a chef' });
       }
-    });
 
-    if (!chef) {
-      return res.status(403).json({ status: 'error', message: 'User is not a chef' });
+      await pantryService.remove(req.params.id as string, chef.id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
     }
-
-    await pantryService.remove(req.params.id as string, chef.id);
-    res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
-});
+  },
+);
 
 export default pantryRouter;

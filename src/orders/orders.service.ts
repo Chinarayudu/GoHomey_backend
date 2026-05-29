@@ -275,7 +275,22 @@ export class OrdersService {
       where: { user_id: userId },
       include: {
         items: true,
-        payment: true,
+        payment: {
+          select: {
+            id: true,
+            order_id: true,
+            amount: true,
+            currency: true,
+            status: true,
+            gateway_id: true,
+            razorpay_order_id: true,
+            razorpay_payment_id: true,
+            razorpay_receipt: true,
+            escrow_status: true,
+            created_at: true,
+            updated_at: true,
+          },
+        },
         delivery: true,
       },
       orderBy: { created_at: 'desc' },
