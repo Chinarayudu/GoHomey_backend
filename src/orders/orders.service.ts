@@ -1,6 +1,10 @@
 import { prisma } from '../prisma/prisma.service';
 import { ordersQueue } from '../common/queues/queues';
-import { Prisma } from '@prisma/client';
+import {
+  ChefApplicationStatus,
+  FuelSubscriptionStatus,
+  Prisma,
+} from '@prisma/client';
 import { isServiceWindowOpen } from '../common/utils/time';
 
 type CheckoutItemType =
@@ -10,7 +14,8 @@ type CheckoutItemType =
   | 'PANTRY'
   | 'SOCIAL_EVENT'
   | 'SOCIAL'
-  | 'FUEL_PLAN';
+  | 'FUEL_PLAN'
+  | 'FUEL_SUBSCRIPTION';
 
 type NormalizedCheckoutItemType =
   | 'DAILY_MEAL'
@@ -28,6 +33,8 @@ function normalizeCheckoutItemType(
       return 'PANTRY_ITEM';
     case 'SOCIAL':
       return 'SOCIAL_EVENT';
+    case 'FUEL_SUBSCRIPTION':
+      return 'FUEL_PLAN';
     default:
       return type;
   }
@@ -344,7 +351,15 @@ export class OrdersService {
 
   async checkout(
     userId: string,
-    items: { id: string; type: CheckoutItemType; quantity: number }[],
+    items: {
+      id: string;
+      type: CheckoutItemType;
+      quantity: number;
+      plan_id?: string;
+      assigned_chef_id?: string;
+      start_date?: string;
+      delivery_time_slot?: string;
+    }[],
   ) {
     return prisma.$transaction(async (tx) => {
       const orderGroups: Record<
@@ -370,6 +385,8 @@ export class OrdersService {
         let price: number;
         let updateData: any = null;
         let updateModel: any = null;
+        let orderItemId = itemRequest.id;
+        let fuelSlotId: string | null = null;
 
         switch (itemType) {
           case 'DAILY_MEAL':
@@ -419,6 +436,89 @@ export class OrdersService {
             };
             break;
 
+          case 'FUEL_PLAN': {
+            const planId = itemRequest.plan_id || itemRequest.id;
+            const assignedChefId = itemRequest.assigned_chef_id;
+            const deliveryTimeSlot = itemRequest.delivery_time_slot;
+
+            if (itemRequest.quantity !== 1) {
+              throw createHttpError(
+                'Fuel subscription quantity must be 1',
+                400,
+              );
+            }
+
+            if (!assignedChefId || !deliveryTimeSlot || !itemRequest.start_date) {
+              throw createHttpError(
+                'Fuel subscription requires plan_id, assigned_chef_id, start_date and delivery_time_slot',
+                400,
+              );
+            }
+
+            itemData = await tx.fuelPlan.findUnique({
+              where: { id: planId },
+            });
+            if (!itemData) {
+              throw createHttpError(`Fuel plan ${planId} not found`, 404);
+            }
+
+            if (!itemData.delivery_time_slots.includes(deliveryTimeSlot)) {
+              throw createHttpError(
+                'Selected delivery_time_slot is not available for this Fuel plan',
+                400,
+              );
+            }
+
+            const chef = await tx.chef.findUnique({
+              where: { id: assignedChefId },
+            });
+            if (
+              !chef ||
+              chef.application_status !== ChefApplicationStatus.APPROVED
+            ) {
+              throw createHttpError(
+                'Approved chef not found for Fuel subscription',
+                404,
+              );
+            }
+
+            const chefSlot = await tx.fuelSlot.findFirst({
+              where: {
+                chef_id: assignedChefId,
+                plan_id: planId,
+                time_slot: deliveryTimeSlot,
+              },
+            });
+            if (!chefSlot) {
+              throw createHttpError(
+                'Selected chef is not available for this Fuel plan and time slot',
+                409,
+              );
+            }
+
+            const activeFuelCount = await tx.fuelSubscription.count({
+              where: {
+                assigned_chef_id: assignedChefId,
+                delivery_time_slot: deliveryTimeSlot,
+                status: FuelSubscriptionStatus.ACTIVE,
+              },
+            });
+            const capacity =
+              chef.max_concurrent_slots_per_hour || chef.max_capacity || 15;
+            if (activeFuelCount >= capacity) {
+              throw createHttpError(
+                'Chef is at Fuel capacity for this time slot',
+                409,
+              );
+            }
+
+            chefId = assignedChefId;
+            price = Number(itemData.price_to_customer ?? itemData.price);
+            orderItemId = planId;
+            fuelSlotId = chefSlot.id;
+            break;
+          }
+
           default:
             throw new Error(`Unsupported item type: ${itemRequest.type}`);
         }
@@ -429,7 +529,7 @@ export class OrdersService {
         }
 
         orderGroups[chefId].items.push({
-          item_id: itemRequest.id,
+          item_id: orderItemId,
           type: itemType,
           quantity: itemRequest.quantity,
           price,
@@ -437,14 +537,17 @@ export class OrdersService {
           daily_meal_id: itemType === 'DAILY_MEAL' ? itemRequest.id : null,
           pantry_id: itemType === 'PANTRY_ITEM' ? itemRequest.id : null,
           social_event_id: itemType === 'SOCIAL_EVENT' ? itemRequest.id : null,
+          fuel_slot_id: itemType === 'FUEL_PLAN' ? fuelSlotId : null,
         });
         orderGroups[chefId].totalPrice += price * itemRequest.quantity;
 
         // 2. Decrement inventory
-        await updateModel.update({
-          where: { id: itemRequest.id },
-          data: updateData,
-        });
+        if (updateModel && updateData) {
+          await updateModel.update({
+            where: { id: itemRequest.id },
+            data: updateData,
+          });
+        }
       }
 
       // 3. Create Orders for each chef group
@@ -466,6 +569,7 @@ export class OrdersService {
                 daily_meal_id: item.daily_meal_id,
                 pantry_id: item.pantry_id,
                 social_event_id: item.social_event_id,
+                fuel_slot_id: item.fuel_slot_id,
               })),
             },
           },

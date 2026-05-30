@@ -41,7 +41,16 @@ export class CartItemDto {
 
   @IsString()
   @IsNotEmpty()
-  @IsIn(['DAILY_MEAL', 'MEAL', 'PANTRY_ITEM', 'PANTRY', 'SOCIAL_EVENT', 'SOCIAL', 'FUEL_PLAN'])
+  @IsIn([
+    'DAILY_MEAL',
+    'MEAL',
+    'PANTRY_ITEM',
+    'PANTRY',
+    'SOCIAL_EVENT',
+    'SOCIAL',
+    'FUEL_PLAN',
+    'FUEL_SUBSCRIPTION',
+  ])
   type:
     | 'DAILY_MEAL'
     | 'MEAL'
@@ -49,11 +58,28 @@ export class CartItemDto {
     | 'PANTRY'
     | 'SOCIAL_EVENT'
     | 'SOCIAL'
-    | 'FUEL_PLAN';
+    | 'FUEL_PLAN'
+    | 'FUEL_SUBSCRIPTION';
 
   @IsNumber()
   @IsNotEmpty()
   quantity: number;
+
+  @IsOptional()
+  @IsString()
+  plan_id?: string;
+
+  @IsOptional()
+  @IsString()
+  assigned_chef_id?: string;
+
+  @IsOptional()
+  @IsString()
+  start_date?: string;
+
+  @IsOptional()
+  @IsString()
+  delivery_time_slot?: string;
 }
 
 export class CheckoutDto {
