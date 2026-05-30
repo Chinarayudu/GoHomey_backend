@@ -220,6 +220,67 @@ export class FuelService {
     return plan;
   }
 
+  async listChefsForPlan(planId: string, deliveryTimeSlot?: string) {
+    const plan = await prisma.fuelPlan.findUnique({ where: { id: planId } });
+    if (!plan) {
+      const error: any = new Error('Fuel plan not found');
+      error.status = 404;
+      throw error;
+    }
+
+    if (
+      deliveryTimeSlot &&
+      !plan.delivery_time_slots.includes(deliveryTimeSlot)
+    ) {
+      const error: any = new Error(
+        'Selected delivery_time_slot is not available for this Fuel plan',
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    const slots = await prisma.fuelSlot.findMany({
+      where: {
+        plan_id: planId,
+        ...(deliveryTimeSlot ? { time_slot: deliveryTimeSlot } : {}),
+        chef: {
+          application_status: ChefApplicationStatus.APPROVED,
+        },
+      },
+      include: {
+        chef: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            bio: true,
+            rating: true,
+            is_verified: true,
+            trust_tier: true,
+            primary_cuisine: true,
+            kitchen_name: true,
+            kitchen_address: true,
+            latitude: true,
+            longitude: true,
+            max_capacity: true,
+            max_concurrent_slots_per_hour: true,
+            appliances: true,
+            kitchen_photo_url: true,
+            application_status: true,
+          },
+        },
+      },
+      orderBy: [{ time_slot: 'asc' }, { created_at: 'desc' }],
+    });
+
+    return slots.map((slot) => ({
+      ...slot.chef,
+      plan_id: planId,
+      delivery_time_slot: slot.time_slot,
+    }));
+  }
+
   private async getChefCapacity(chefId: string, timeSlot: string) {
     const chef = await prisma.chef.findUnique({ where: { id: chefId } });
     if (!chef || chef.application_status !== ChefApplicationStatus.APPROVED) {

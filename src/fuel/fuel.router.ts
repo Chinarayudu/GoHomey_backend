@@ -100,6 +100,19 @@ fuelRouter.get('/plans/:id', async (req, res, next) => {
   }
 });
 
+// GET /api/v1/fuel/plans/:id/chefs?delivery_time_slot=13:00
+fuelRouter.get('/plans/:id/chefs', async (req, res, next) => {
+  try {
+    const result = await fuelService.listChefsForPlan(
+      req.params.id as string,
+      req.query.delivery_time_slot as string | undefined,
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/v1/fuel/chef/plans
 fuelRouter.get(
   '/chef/plans',
