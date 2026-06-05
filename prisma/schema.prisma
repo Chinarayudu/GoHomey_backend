@@ -104,15 +104,15 @@ model User {
   dietary_preference DietaryPreference @default(BOTH)
   fitness_goals      String[]          @default([])
 
-  latitude   Float?
-  longitude  Float?
+  latitude  Float?
+  longitude Float?
 
-  chef      Chef?
-  follows   Follow[]  @relation("UserFollows")
-  orders    Order[]
-  addresses Address[]
+  chef               Chef?
+  follows            Follow[]           @relation("UserFollows")
+  orders             Order[]
+  addresses          Address[]
   fuel_subscriptions FuelSubscription[]
-  push_tokens DevicePushToken[]
+  push_tokens        DevicePushToken[]
 }
 
 model DevicePushToken {
@@ -142,6 +142,8 @@ model Address {
   is_default   Boolean  @default(false)
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
+
+  delivery_orders Order[] @relation("OrderDeliveryAddress")
 }
 
 model Chef {
@@ -162,13 +164,13 @@ model Chef {
   primary_cuisine String?
 
   // Step 2: Kitchen Space
-  kitchen_name    String?
-  kitchen_address String?
-  latitude        Float?
-  longitude       Float?
-  max_capacity    Int?     @default(10)
-  max_concurrent_slots_per_hour Int @default(15)
-  appliances      String[] @default([])
+  kitchen_name                  String?
+  kitchen_address               String?
+  latitude                      Float?
+  longitude                     Float?
+  max_capacity                  Int?     @default(10)
+  max_concurrent_slots_per_hour Int      @default(15)
+  appliances                    String[] @default([])
 
   // Step 3: Security & Verification
   government_id_url    String?
@@ -184,16 +186,16 @@ model Chef {
   application_status ChefApplicationStatus @default(DRAFT)
   registration_step  Int                   @default(1)
 
-  user_id       String?       @unique
-  user          User?         @relation(fields: [user_id], references: [id])
-  followers     Follow[]      @relation("ChefFollowers")
-  meals         DailyMeal[]
-  pantry        PantryItem[]
-  fuel_slots    FuelSlot[]
+  user_id            String?                @unique
+  user               User?                  @relation(fields: [user_id], references: [id])
+  followers          Follow[]               @relation("ChefFollowers")
+  meals              DailyMeal[]
+  pantry             PantryItem[]
+  fuel_slots         FuelSlot[]
   fuel_subscriptions FuelSubscription[]
   fuel_fulfillments  FuelDailyFulfillment[]
-  social_events SocialEvent[]
-  orders        Order[]
+  social_events      SocialEvent[]
+  orders             Order[]
 }
 
 model Follow {
@@ -226,25 +228,25 @@ model DailyMeal {
 }
 
 model FuelPlan {
-  id          String   @id @default(uuid())
-  name        String
-  goal        String
-  description String
-  price       Float
-  duration_days     Int     @default(30)
-  price_to_customer Float?
-  fixed_chef_payout Float?
-  sop_document_url  String?
+  id                  String   @id @default(uuid())
+  name                String
+  goal                String
+  description         String
+  price               Float
+  duration_days       Int      @default(30)
+  price_to_customer   Float?
+  fixed_chef_payout   Float?
+  sop_document_url    String?
   delivery_time_slots String[] @default([])
-  menu_json   Json
-  calories    Int?
-  protein     Int?
-  carbs       Int?
-  fat         Int?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  menu_json           Json
+  calories            Int?
+  protein             Int?
+  carbs               Int?
+  fat                 Int?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 
-  slots FuelSlot[]
+  slots         FuelSlot[]
   subscriptions FuelSubscription[]
 }
 
@@ -338,21 +340,25 @@ model SocialEvent {
 }
 
 model Order {
-  id          String      @id @default(uuid())
-  user_id     String
-  chef_id     String
-  user        User        @relation(fields: [user_id], references: [id])
-  chef        Chef        @relation(fields: [chef_id], references: [id])
-  order_type  OrderType
-  status      OrderStatus @default(PENDING)
-  total_price Float
-  fault_type  FaultType?
-  created_at  DateTime    @default(now())
-  updated_at  DateTime    @updatedAt
+  id                  String      @id @default(uuid())
+  user_id             String
+  chef_id             String
+  delivery_address_id String?
+  user                User        @relation(fields: [user_id], references: [id])
+  chef                Chef        @relation(fields: [chef_id], references: [id])
+  delivery_address    Address?    @relation("OrderDeliveryAddress", fields: [delivery_address_id], references: [id])
+  order_type          OrderType
+  status              OrderStatus @default(PENDING)
+  total_price         Float
+  fault_type          FaultType?
+  created_at          DateTime    @default(now())
+  updated_at          DateTime    @updatedAt
 
   items    OrderItem[]
   payment  Payment?
   delivery Delivery?
+
+  @@index([delivery_address_id])
 }
 
 model OrderItem {

@@ -57,15 +57,16 @@ function resolvePlatformFeeRupees(): number {
   return feeRupees;
 }
 
-function addOrderAmountBreakdown<T extends { total_price: number; payment?: { amount: number } | null }>(
-  order: T,
-) {
+function addOrderAmountBreakdown<
+  T extends { total_price: number; payment?: { amount: number } | null },
+>(order: T) {
   const paidAmount = order.payment?.amount;
   const platformFee =
     paidAmount === undefined || paidAmount === null
       ? resolvePlatformFeeRupees()
       : Math.max(Number((paidAmount - order.total_price).toFixed(2)), 0);
-  const payableAmount = paidAmount ?? Number((order.total_price + platformFee).toFixed(2));
+  const payableAmount =
+    paidAmount ?? Number((order.total_price + platformFee).toFixed(2));
 
   return {
     ...order,
@@ -76,8 +77,40 @@ function addOrderAmountBreakdown<T extends { total_price: number; payment?: { am
 }
 
 export class OrdersService {
-  async createDailyMealOrder(userId: string, mealId: string, quantity: number) {
+  private async validateDeliveryAddress(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    deliveryAddressId?: string,
+  ) {
+    if (!deliveryAddressId) return null;
+
+    const address = await tx.address.findFirst({
+      where: {
+        id: deliveryAddressId,
+        user_id: userId,
+      },
+    });
+
+    if (!address) {
+      throw createHttpError('Delivery address not found for this user', 404);
+    }
+
+    return address;
+  }
+
+  async createDailyMealOrder(
+    userId: string,
+    mealId: string,
+    quantity: number,
+    deliveryAddressId?: string,
+  ) {
     return prisma.$transaction(async (tx) => {
+      const deliveryAddress = await this.validateDeliveryAddress(
+        tx,
+        userId,
+        deliveryAddressId,
+      );
+
       // 1. Check if meal exists and has capacity
       const meal = await tx.dailyMeal.findUnique({
         where: { id: mealId },
@@ -110,6 +143,7 @@ export class OrdersService {
         data: {
           user_id: userId,
           chef_id: meal.chef_id,
+          delivery_address_id: deliveryAddress?.id,
           order_type: 'DAILY_MEAL',
           total_price: meal.price * quantity,
           status: 'PENDING',
@@ -124,6 +158,7 @@ export class OrdersService {
         },
         include: {
           items: true,
+          delivery_address: true,
         },
       });
 
@@ -138,8 +173,19 @@ export class OrdersService {
     });
   }
 
-  async createSocialOrder(userId: string, eventId: string, quantity: number) {
+  async createSocialOrder(
+    userId: string,
+    eventId: string,
+    quantity: number,
+    deliveryAddressId?: string,
+  ) {
     return prisma.$transaction(async (tx) => {
+      const deliveryAddress = await this.validateDeliveryAddress(
+        tx,
+        userId,
+        deliveryAddressId,
+      );
+
       const event = await tx.socialEvent.findUnique({
         where: { id: eventId },
       });
@@ -169,6 +215,7 @@ export class OrdersService {
         data: {
           user_id: userId,
           chef_id: event.chef_id,
+          delivery_address_id: deliveryAddress?.id,
           order_type: 'SOCIAL_EVENT',
           total_price: event.price * quantity,
           status: 'PENDING',
@@ -183,6 +230,7 @@ export class OrdersService {
         },
         include: {
           items: true,
+          delivery_address: true,
         },
       });
 
@@ -201,6 +249,7 @@ export class OrdersService {
     itemId: string,
     quantity: number,
     deliveryWindow?: string,
+    deliveryAddressId?: string,
   ) {
     if (!deliveryWindow) {
       const error: any = new Error(
@@ -211,6 +260,12 @@ export class OrdersService {
     }
 
     return prisma.$transaction(async (tx) => {
+      const deliveryAddress = await this.validateDeliveryAddress(
+        tx,
+        userId,
+        deliveryAddressId,
+      );
+
       const item = await tx.pantryItem.findUnique({
         where: { id: itemId },
       });
@@ -240,6 +295,7 @@ export class OrdersService {
         data: {
           user_id: userId,
           chef_id: item.chef_id,
+          delivery_address_id: deliveryAddress?.id,
           order_type: 'PANTRY_ITEM',
           total_price: item.price * quantity,
           status: 'PENDING',
@@ -262,6 +318,7 @@ export class OrdersService {
         include: {
           items: true,
           delivery: true,
+          delivery_address: true,
         },
       });
 
@@ -299,6 +356,7 @@ export class OrdersService {
           },
         },
         delivery: true,
+        delivery_address: true,
       },
       orderBy: { created_at: 'desc' },
     });
@@ -338,6 +396,7 @@ export class OrdersService {
         },
         payment: true,
         delivery: true,
+        delivery_address: true,
         user: {
           select: {
             name: true,
@@ -360,8 +419,15 @@ export class OrdersService {
       start_date?: string;
       delivery_time_slot?: string;
     }[],
+    deliveryAddressId?: string,
   ) {
     return prisma.$transaction(async (tx) => {
+      const deliveryAddress = await this.validateDeliveryAddress(
+        tx,
+        userId,
+        deliveryAddressId,
+      );
+
       const orderGroups: Record<
         string,
         { chefId: string; items: any[]; totalPrice: number }
@@ -448,7 +514,11 @@ export class OrdersService {
               );
             }
 
-            if (!assignedChefId || !deliveryTimeSlot || !itemRequest.start_date) {
+            if (
+              !assignedChefId ||
+              !deliveryTimeSlot ||
+              !itemRequest.start_date
+            ) {
               throw createHttpError(
                 'Fuel subscription requires plan_id, assigned_chef_id, start_date and delivery_time_slot',
                 400,
@@ -558,6 +628,7 @@ export class OrdersService {
           data: {
             user_id: userId,
             chef_id: chefId,
+            delivery_address_id: deliveryAddress?.id,
             order_type: group.items[0].type as any,
             total_price: group.totalPrice,
             status: 'PENDING',
@@ -575,6 +646,7 @@ export class OrdersService {
           },
           include: {
             items: true,
+            delivery_address: true,
           },
         });
 

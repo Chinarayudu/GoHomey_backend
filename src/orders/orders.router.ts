@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { ordersService } from './orders.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
-import { CreateMealOrderDto, CreatePantryOrderDto, CreateSocialOrderDto, UpdateOrderStatusDto, CheckoutDto } from './dto/orders.dto';
+import {
+  CreateMealOrderDto,
+  CreatePantryOrderDto,
+  CreateSocialOrderDto,
+  UpdateOrderStatusDto,
+  CheckoutDto,
+} from './dto/orders.dto';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
@@ -26,13 +32,14 @@ const ordersRouter = Router();
  *                 type: string
  *               quantity:
  *                 type: integer
+ *               delivery_address_id:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Meal order created
  */
 // POST /api/v1/orders/meal
 ordersRouter.post(
-
   '/meal',
   jwtAuth,
   validationMiddleware(CreateMealOrderDto),
@@ -41,13 +48,14 @@ ordersRouter.post(
       const result = await ordersService.createDailyMealOrder(
         (req.user as any).id,
         req.body.mealId,
-        req.body.quantity
+        req.body.quantity,
+        req.body.delivery_address_id,
       );
       res.status(201).json(result);
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 /**
@@ -74,13 +82,14 @@ ordersRouter.post(
  *               deliveryWindow:
  *                 type: string
  *                 example: "Tomorrow Lunch Batch"
+ *               delivery_address_id:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Pantry order created
  */
 // POST /api/v1/orders/pantry
 ordersRouter.post(
-
   '/pantry',
   jwtAuth,
   validationMiddleware(CreatePantryOrderDto),
@@ -90,13 +99,14 @@ ordersRouter.post(
         (req.user as any).id,
         req.body.itemId,
         req.body.quantity,
-        req.body.deliveryWindow
+        req.body.deliveryWindow,
+        req.body.delivery_address_id,
       );
       res.status(201).json(result);
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 /**
@@ -118,6 +128,8 @@ ordersRouter.post(
  *                 type: string
  *               quantity:
  *                 type: integer
+ *               delivery_address_id:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Social event booked
@@ -132,13 +144,14 @@ ordersRouter.post(
       const result = await ordersService.createSocialOrder(
         (req.user as any).id,
         req.body.eventId,
-        req.body.quantity
+        req.body.quantity,
+        req.body.delivery_address_id,
       );
       res.status(201).json(result);
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 /**
@@ -169,6 +182,8 @@ ordersRouter.post(
  *                       enum: [DAILY_MEAL, PANTRY_ITEM, SOCIAL_EVENT]
  *                     quantity:
  *                       type: integer
+ *               delivery_address_id:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Orders created successfully
@@ -180,12 +195,16 @@ ordersRouter.post(
   validationMiddleware(CheckoutDto),
   async (req, res, next) => {
     try {
-      const result = await ordersService.checkout((req.user as any).id, req.body.items);
+      const result = await ordersService.checkout(
+        (req.user as any).id,
+        req.body.items,
+        req.body.delivery_address_id,
+      );
       res.status(201).json(result);
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 /**
@@ -202,7 +221,6 @@ ordersRouter.post(
  */
 // GET /api/v1/orders/user
 ordersRouter.get('/user', jwtAuth, async (req, res, next) => {
-
   try {
     const result = await ordersService.findUserOrders((req.user as any).id);
     res.json(result);
@@ -224,31 +242,38 @@ ordersRouter.get('/user', jwtAuth, async (req, res, next) => {
  *         description: Chef orders retrieved
  */
 // GET /api/v1/orders/chef
-ordersRouter.get('/chef', jwtAuth, checkRoles(Role.CHEF), async (req, res, next) => {
-  try {
-    const user = req.user as any;
-    const chef = await prisma.chef.findFirst({
-      where: {
-        OR: [
-          { id: user.id },
-          { user_id: user.id }
-        ]
+ordersRouter.get(
+  '/chef',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req, res, next) => {
+    try {
+      const user = req.user as any;
+      const chef = await prisma.chef.findFirst({
+        where: {
+          OR: [{ id: user.id }, { user_id: user.id }],
+        },
+      });
+      if (!chef) {
+        return res
+          .status(403)
+          .json({ status: 'error', message: 'Chef profile not found' });
       }
-    });
-    if (!chef) {
-      return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
-    }
 
-    const { statusGroup } = req.query;
-    const result = await ordersService.findChefOrders(chef.id, statusGroup as 'active' | 'completed');
-    res.json({
-      status: 'success',
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+      const { statusGroup } = req.query;
+      const result = await ordersService.findChefOrders(
+        chef.id,
+        statusGroup as 'active' | 'completed',
+      );
+      res.json({
+        status: 'success',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 /**
  * @openapi
@@ -279,19 +304,21 @@ ordersRouter.get('/chef', jwtAuth, checkRoles(Role.CHEF), async (req, res, next)
  */
 // PATCH /api/v1/orders/:id/status
 ordersRouter.patch(
-
   '/:id/status',
   jwtAuth,
   checkRoles(Role.CHEF, Role.ADMIN),
   validationMiddleware(UpdateOrderStatusDto),
   async (req, res, next) => {
     try {
-      const result = await ordersService.updateOrderStatus(req.params.id as string, req.body.status);
+      const result = await ordersService.updateOrderStatus(
+        req.params.id as string,
+        req.body.status,
+      );
       res.json(result);
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 export default ordersRouter;

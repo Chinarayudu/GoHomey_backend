@@ -84,7 +84,14 @@ export class AdminService {
 
   // --- Order Management ---
 
-  async getAllOrders(filters: { status?: any; type?: any; chefId?: string; userId?: string } = {}) {
+  async getAllOrders(
+    filters: {
+      status?: any;
+      type?: any;
+      chefId?: string;
+      userId?: string;
+    } = {},
+  ) {
     const where: any = {};
     if (filters.status) where.status = filters.status;
     if (filters.type) where.order_type = filters.type;
@@ -98,6 +105,7 @@ export class AdminService {
         chef: { select: { name: true, kitchen_name: true } },
         payment: true,
         delivery: true,
+        delivery_address: true,
       },
       orderBy: { created_at: 'desc' },
     });
@@ -110,8 +118,11 @@ export class AdminService {
       },
       include: {
         user: { select: { name: true, phone: true } },
-        chef: { select: { name: true, kitchen_name: true, kitchen_address: true } },
+        chef: {
+          select: { name: true, kitchen_name: true, kitchen_address: true },
+        },
         delivery: true,
+        delivery_address: true,
         items: true,
       },
       orderBy: { updated_at: 'asc' },
@@ -124,6 +135,7 @@ export class AdminService {
       include: {
         user: { include: { addresses: true } },
         chef: true,
+        delivery_address: true,
         items: {
           include: {
             daily_meal: true,
@@ -151,7 +163,9 @@ export class AdminService {
 
   // --- Chef Management ---
 
-  async getChefs(filters: { applicationStatus?: any; isVerified?: boolean } = {}) {
+  async getChefs(
+    filters: { applicationStatus?: any; isVerified?: boolean } = {},
+  ) {
     const where: any = {};
     if (
       filters.applicationStatus &&
@@ -159,7 +173,8 @@ export class AdminService {
     ) {
       where.application_status = filters.applicationStatus;
     }
-    if (filters.isVerified !== undefined) where.is_verified = filters.isVerified;
+    if (filters.isVerified !== undefined)
+      where.is_verified = filters.isVerified;
 
     return prisma.chef.findMany({
       where,
@@ -176,12 +191,20 @@ export class AdminService {
       include: {
         user: true,
         meals: { take: 5, orderBy: { created_at: 'desc' } },
-        orders: { take: 10, orderBy: { created_at: 'desc' }, include: { payment: true } },
+        orders: {
+          take: 10,
+          orderBy: { created_at: 'desc' },
+          include: { payment: true },
+        },
       },
     });
   }
 
-  async updateChefApplication(chefId: string, status: any, isVerified?: boolean) {
+  async updateChefApplication(
+    chefId: string,
+    status: any,
+    isVerified?: boolean,
+  ) {
     const data: any = { application_status: status };
     if (isVerified !== undefined) data.is_verified = isVerified;
 

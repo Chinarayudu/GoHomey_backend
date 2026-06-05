@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsNumber, IsIn, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsIn,
+  IsOptional,
+} from 'class-validator';
 
 export class CreateMealOrderDto {
   @IsString()
@@ -8,6 +14,10 @@ export class CreateMealOrderDto {
   @IsNumber()
   @IsNotEmpty()
   quantity: number;
+
+  @IsOptional()
+  @IsString()
+  delivery_address_id?: string;
 }
 
 export class CreatePantryOrderDto {
@@ -22,6 +32,10 @@ export class CreatePantryOrderDto {
   @IsOptional()
   @IsString()
   deliveryWindow?: string;
+
+  @IsOptional()
+  @IsString()
+  delivery_address_id?: string;
 }
 
 export class CreateSocialOrderDto {
@@ -32,6 +46,10 @@ export class CreateSocialOrderDto {
   @IsNumber()
   @IsNotEmpty()
   quantity: number;
+
+  @IsOptional()
+  @IsString()
+  delivery_address_id?: string;
 }
 
 export class CartItemDto {
@@ -85,6 +103,10 @@ export class CartItemDto {
 export class CheckoutDto {
   @IsNotEmpty()
   items: CartItemDto[];
+
+  @IsOptional()
+  @IsString()
+  delivery_address_id?: string;
 }
 
 export class UpdateOrderStatusDto {

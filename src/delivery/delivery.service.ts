@@ -105,6 +105,7 @@ export class DeliveryService {
         chef: true,
         payment: true,
         delivery: true,
+        delivery_address: true,
         user: {
           include: {
             addresses: {
@@ -118,15 +119,23 @@ export class DeliveryService {
     });
 
     if (readyOrders.length === 0) {
-      let hint = 'No orders with status READY_FOR_PICKUP are waiting for dispatch.';
+      let hint =
+        'No orders with status READY_FOR_PICKUP are waiting for dispatch.';
       if (orderIds?.length) {
         const selected = await prisma.order.findMany({
           where: { id: { in: orderIds } },
-          select: { id: true, status: true, delivery: { select: { status: true } } },
+          select: {
+            id: true,
+            status: true,
+            delivery: { select: { status: true } },
+          },
         });
         hint = selected.length
           ? `Selected orders are not eligible: ${selected
-              .map((o) => `${o.id.slice(0, 8)}… status=${o.status} delivery=${o.delivery?.status ?? 'none'}`)
+              .map(
+                (o) =>
+                  `${o.id.slice(0, 8)}… status=${o.status} delivery=${o.delivery?.status ?? 'none'}`,
+              )
               .join('; ')}`
           : 'None of the selected order IDs were found.';
       }
@@ -188,7 +197,11 @@ export class DeliveryService {
           : error instanceof Error
             ? error.message
             : String(error);
-        console.error(`[Shadowfax] Failed to dispatch order ${order.id}:`, errorMessage, details ?? '');
+        console.error(
+          `[Shadowfax] Failed to dispatch order ${order.id}:`,
+          errorMessage,
+          details ?? '',
+        );
         results.push({
           order_id: order.id,
           delivery_id: order.delivery?.id,
@@ -326,7 +339,9 @@ export class DeliveryService {
       longitude?: number | null;
     } | null,
   ) {
-    console.log(`[Shadowfax API] Pushing delivery ${deliveryId} to Shadowfax...`);
+    console.log(
+      `[Shadowfax API] Pushing delivery ${deliveryId} to Shadowfax...`,
+    );
 
     const apiMode = resolveShadowfaxApiMode();
     const apiBaseUrl = resolveShadowfaxBaseUrl(partner.base_url);
@@ -339,10 +354,16 @@ export class DeliveryService {
       apiKey;
 
     if (!apiKey) {
-      return { success: false, error: 'Shadowfax API token is not configured on the server' };
+      return {
+        success: false,
+        error: 'Shadowfax API token is not configured on the server',
+      };
     }
     if (!creditsKey) {
-      return { success: false, error: 'Shadowfax credits key is not configured' };
+      return {
+        success: false,
+        error: 'Shadowfax credits key is not configured',
+      };
     }
     if (!userAddress?.address_line) {
       return {
@@ -430,7 +451,10 @@ export class DeliveryService {
         sfxStatus = trackResponse.status;
         console.log(`[Shadowfax API] Track status=${sfxStatus}`);
       } catch (trackError) {
-        console.warn('[Shadowfax API] Could not fetch tracking URL:', trackError);
+        console.warn(
+          '[Shadowfax API] Could not fetch tracking URL:',
+          trackError,
+        );
       }
 
       return {
@@ -458,6 +482,7 @@ export class DeliveryService {
           include: {
             chef: true,
             payment: true,
+            delivery_address: true,
             user: {
               include: {
                 addresses: {
@@ -479,7 +504,8 @@ export class DeliveryService {
 
     const shadowfaxPartner = partner ?? (await this.getShadowfaxPartner());
     const order = delivery.order;
-    const userAddress = order.user.addresses[0] || null;
+    const userAddress =
+      order.delivery_address || order.user.addresses[0] || null;
 
     const externalResponse = await this.pushToShadowfax(
       deliveryId,
