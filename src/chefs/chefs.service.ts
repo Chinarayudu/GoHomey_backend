@@ -1,7 +1,7 @@
-import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 import { Chef, Prisma, Role, ChefApplicationStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { isServiceWindowOpen } from '../common/utils/time';
 
 const publicChefSelect = {
   id: true,
@@ -39,6 +39,42 @@ const privateChefProfileSelect = {
 };
 
 export class ChefsService {
+  private getMealCatalogState(meal: any, startOfToday: Date) {
+    if (meal.date < startOfToday) {
+      return { is_active: false, inactive_reason: 'PAST_DATE' };
+    }
+
+    if (meal.slots_remaining <= 0) {
+      return { is_active: false, inactive_reason: 'SOLD_OUT' };
+    }
+
+    if (!isServiceWindowOpen(meal)) {
+      return { is_active: false, inactive_reason: 'SERVICE_WINDOW_CLOSED' };
+    }
+
+    return { is_active: true, inactive_reason: null };
+  }
+
+  private getPantryCatalogState(item: any) {
+    if (item.inventory <= 0) {
+      return { is_active: false, inactive_reason: 'OUT_OF_STOCK' };
+    }
+
+    return { is_active: true, inactive_reason: null };
+  }
+
+  private getSocialCatalogState(event: any, now: Date) {
+    if (event.end_date < now) {
+      return { is_active: false, inactive_reason: 'EVENT_ENDED' };
+    }
+
+    if (event.slots_remaining <= 0) {
+      return { is_active: false, inactive_reason: 'SOLD_OUT' };
+    }
+
+    return { is_active: true, inactive_reason: null };
+  }
+
   /**
    * Step 1: Create chef profile with personal info + cuisine
    * Called after OTP verification for Chef.
@@ -319,6 +355,87 @@ export class ChefsService {
     //   .filter((chef) => chef.distance <= 3)
     //   .sort((a: any, b: any) => a.distance - b.distance);
     return chefs;
+  }
+
+  async getCatalog(chefId: string) {
+    const chef = await prisma.chef.findUnique({
+      where: { id: chefId },
+      select: publicChefSelect,
+    });
+
+    if (!chef) {
+      const error: any = new Error('Chef profile not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const [meals, pantryItems, socialEvents, fuelSlots] = await Promise.all([
+      prisma.dailyMeal.findMany({
+        where: { chef_id: chefId },
+        orderBy: [{ date: 'desc' }, { created_at: 'desc' }],
+      }),
+      prisma.pantryItem.findMany({
+        where: { chef_id: chefId },
+        orderBy: { created_at: 'desc' },
+      }),
+      prisma.socialEvent.findMany({
+        where: { chef_id: chefId },
+        orderBy: [{ date: 'desc' }, { created_at: 'desc' }],
+      }),
+      prisma.fuelSlot.findMany({
+        where: { chef_id: chefId },
+        include: { plan: true },
+        orderBy: [{ time_slot: 'asc' }, { created_at: 'desc' }],
+      }),
+    ]);
+
+    const dailyMeals = meals.map((meal) => ({
+      ...meal,
+      catalog_type: 'DAILY_MEAL',
+      ...this.getMealCatalogState(meal, startOfToday),
+    }));
+
+    const pantry = pantryItems.map((item) => ({
+      ...item,
+      catalog_type: 'PANTRY_ITEM',
+      ...this.getPantryCatalogState(item),
+    }));
+
+    const social = socialEvents.map((event) => ({
+      ...event,
+      catalog_type: 'SOCIAL_EVENT',
+      ...this.getSocialCatalogState(event, now),
+    }));
+
+    const fuel = fuelSlots.map((slot) => ({
+      ...slot,
+      catalog_type: 'FUEL_SLOT',
+      is_active: true,
+      inactive_reason: null,
+    }));
+
+    return {
+      status: 'success',
+      data: {
+        chef,
+        summary: {
+          daily_meals_count: dailyMeals.length,
+          pantry_items_count: pantry.length,
+          social_events_count: social.length,
+          fuel_slots_count: fuel.length,
+          total_count:
+            dailyMeals.length + pantry.length + social.length + fuel.length,
+        },
+        daily_meals: dailyMeals,
+        pantry_items: pantry,
+        social_events: social,
+        fuel_slots: fuel,
+      },
+    };
   }
 
   async verifyChef(id: string, isVerified: boolean, trustTier?: number) {

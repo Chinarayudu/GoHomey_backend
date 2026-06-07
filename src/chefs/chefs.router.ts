@@ -9,6 +9,14 @@ import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 const chefsRouter = Router();
 
+async function resolveChefForUser(user: any) {
+  return prisma.chef.findFirst({
+    where: {
+      OR: [{ id: user.id }, { user_id: user.id }],
+    },
+  });
+}
+
 // ─── REGISTRATION STEP 1: Personal Info ───────────────────────────────────────
 
 /**
@@ -450,6 +458,44 @@ chefsRouter.get('/', optionalJwtAuth, async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * @openapi
+ * /chefs/catalog:
+ *   get:
+ *     summary: Get everything created or enabled by the logged-in chef, including inactive/past items
+ *     tags: [Chefs]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Full chef catalog retrieved
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (not a chef or chef profile not found)
+ */
+// GET /api/v1/chefs/catalog
+chefsRouter.get(
+  '/catalog',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req, res, next) => {
+    try {
+      const chef = await resolveChefForUser(req.user as any);
+      if (!chef) {
+        return res
+          .status(403)
+          .json({ status: 'error', message: 'Chef profile not found' });
+      }
+
+      const result = await chefsService.getCatalog(chef.id);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 /**
  * @openapi
