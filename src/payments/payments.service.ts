@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { PaymentStatus } from '@prisma/client';
+import { FuelSubscriptionStatus, PaymentStatus, Prisma } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 
 type RazorpayOrderResponse = {
@@ -96,6 +96,37 @@ function timingSafeEqual(a: string, b: string): boolean {
   return aBuffer.length === bBuffer.length && crypto.timingSafeEqual(aBuffer, bBuffer);
 }
 
+function startOfDay(date: Date) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function addDays(date: Date, days: number) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function parseFuelStartDate(value: Date | string | null | undefined) {
+  if (!value) {
+    const error: any = new Error('Fuel subscription start_date is missing from order item');
+    error.status = 400;
+    throw error;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const error: any = new Error('Fuel subscription start_date is invalid');
+    error.status = 400;
+    throw error;
+  }
+
+  return startOfDay(date);
+}
+
+const FUEL_FULFILLMENT_LOOKAHEAD_DAYS = 2;
+
 export class PaymentsService {
   private get keyId() {
     return requireEnv('RAZORPAY_KEY_ID');
@@ -164,6 +195,108 @@ export class PaymentsService {
       .digest('hex');
 
     return timingSafeEqual(expectedSignature, signature);
+  }
+
+  private async createFuelSubscriptionsForPaidOrder(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+  ) {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            fuel_slot: {
+              include: {
+                plan: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      const error: any = new Error('Order not found for Fuel subscription creation');
+      error.status = 404;
+      throw error;
+    }
+
+    const createdSubscriptions: any[] = [];
+    const fuelItems = order.items.filter((item) => item.fuel_slot_id);
+
+    for (const item of fuelItems) {
+      if (item.fuel_subscription_id) {
+        continue;
+      }
+
+      if (!item.fuel_slot?.plan) {
+        const error: any = new Error('Fuel slot or plan not found for paid order item');
+        error.status = 400;
+        throw error;
+      }
+
+      const startDate = parseFuelStartDate(item.fuel_subscription_start_date);
+      const plan = item.fuel_slot.plan;
+      const endDate = addDays(startDate, (plan.duration_days || 30) - 1);
+      const deliveryTimeSlot =
+        item.fuel_subscription_delivery_time_slot || item.fuel_slot.time_slot;
+
+      const subscription = await tx.fuelSubscription.create({
+        data: {
+          user_id: order.user_id,
+          plan_id: plan.id,
+          assigned_chef_id: order.chef_id,
+          status: FuelSubscriptionStatus.ACTIVE,
+          start_date: startDate,
+          end_date: endDate,
+          delivery_time_slot: deliveryTimeSlot,
+        },
+        include: {
+          plan: true,
+          assigned_chef: {
+            select: {
+              id: true,
+              name: true,
+              kitchen_name: true,
+              phone: true,
+            },
+          },
+        },
+      });
+
+      await tx.orderItem.update({
+        where: { id: item.id },
+        data: { fuel_subscription_id: subscription.id },
+      });
+
+      const today = startOfDay(new Date());
+      const from = startDate > today ? startDate : today;
+      const horizon = addDays(today, FUEL_FULFILLMENT_LOOKAHEAD_DAYS);
+      const to = endDate < horizon ? endDate : horizon;
+
+      for (let date = from; date <= to; date = addDays(date, 1)) {
+        await tx.fuelDailyFulfillment.upsert({
+          where: {
+            subscription_id_fulfillment_date: {
+              subscription_id: subscription.id,
+              fulfillment_date: date,
+            },
+          },
+          update: {},
+          create: {
+            subscription_id: subscription.id,
+            chef_id: order.chef_id,
+            fulfillment_date: date,
+            delivery_time_slot: deliveryTimeSlot,
+          },
+        });
+      }
+
+      createdSubscriptions.push(subscription);
+    }
+
+    return createdSubscriptions;
   }
 
   async createPayment(orderId: string, requestedAmount?: unknown) {
@@ -327,10 +460,14 @@ export class PaymentsService {
         data: { status: 'CONFIRMED' },
       });
 
+      const fuel_subscriptions =
+        await this.createFuelSubscriptionsForPaidOrder(tx, payment.order_id);
+
       return {
         success: true,
         payment: updatedPayment,
         order: updatedOrder,
+        fuel_subscriptions,
       };
     });
   }
@@ -408,6 +545,8 @@ export class PaymentsService {
           where: { id: payment.order_id },
           data: { status: 'CONFIRMED' },
         });
+
+        await this.createFuelSubscriptionsForPaidOrder(tx, payment.order_id);
       });
     }
 

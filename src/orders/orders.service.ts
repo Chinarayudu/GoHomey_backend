@@ -453,6 +453,8 @@ export class OrdersService {
         let updateModel: any = null;
         let orderItemId = itemRequest.id;
         let fuelSlotId: string | null = null;
+        let fuelSubscriptionStartDate: Date | null = null;
+        let fuelSubscriptionDeliveryTimeSlot: string | null = null;
 
         switch (itemType) {
           case 'DAILY_MEAL':
@@ -586,6 +588,8 @@ export class OrdersService {
             price = Number(itemData.price_to_customer ?? itemData.price);
             orderItemId = planId;
             fuelSlotId = chefSlot.id;
+            fuelSubscriptionStartDate = new Date(itemRequest.start_date);
+            fuelSubscriptionDeliveryTimeSlot = deliveryTimeSlot;
             break;
           }
 
@@ -608,6 +612,12 @@ export class OrdersService {
           pantry_id: itemType === 'PANTRY_ITEM' ? itemRequest.id : null,
           social_event_id: itemType === 'SOCIAL_EVENT' ? itemRequest.id : null,
           fuel_slot_id: itemType === 'FUEL_PLAN' ? fuelSlotId : null,
+          fuel_subscription_start_date:
+            itemType === 'FUEL_PLAN' ? fuelSubscriptionStartDate : null,
+          fuel_subscription_delivery_time_slot:
+            itemType === 'FUEL_PLAN'
+              ? fuelSubscriptionDeliveryTimeSlot
+              : null,
         });
         orderGroups[chefId].totalPrice += price * itemRequest.quantity;
 
@@ -641,6 +651,10 @@ export class OrdersService {
                 pantry_id: item.pantry_id,
                 social_event_id: item.social_event_id,
                 fuel_slot_id: item.fuel_slot_id,
+                fuel_subscription_start_date:
+                  item.fuel_subscription_start_date,
+                fuel_subscription_delivery_time_slot:
+                  item.fuel_subscription_delivery_time_slot,
               })),
             },
           },

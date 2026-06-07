@@ -280,6 +280,7 @@ model FuelSubscription {
   updated_at         DateTime               @updatedAt
 
   fulfillments FuelDailyFulfillment[]
+  order_items  OrderItem[]
 
   @@index([user_id])
   @@index([assigned_chef_id, delivery_time_slot, status])
@@ -378,6 +379,10 @@ model OrderItem {
   pantry_item     PantryItem?  @relation(fields: [pantry_id], references: [id])
   fuel_slot_id    String?
   fuel_slot       FuelSlot?    @relation(fields: [fuel_slot_id], references: [id])
+  fuel_subscription_id                 String?           @unique
+  fuel_subscription                    FuelSubscription? @relation(fields: [fuel_subscription_id], references: [id])
+  fuel_subscription_start_date         DateTime?
+  fuel_subscription_delivery_time_slot String?
   social_event_id String?
   social_event    SocialEvent? @relation(fields: [social_event_id], references: [id])
 }

@@ -8,6 +8,20 @@ import { Role } from '@prisma/client';
 
 const usersRouter = Router();
 
+function normalizeAddressCoordinates(req: any, _res: any, next: any) {
+  if (req.body.lat !== undefined && req.body.latitude === undefined) {
+    req.body.latitude = Number(req.body.lat);
+  }
+
+  if (req.body.lng !== undefined && req.body.longitude === undefined) {
+    req.body.longitude = Number(req.body.lng);
+  }
+
+  delete req.body.lat;
+  delete req.body.lng;
+  next();
+}
+
 /**
  * @openapi
  * components:
@@ -161,6 +175,7 @@ usersRouter.get('/addresses', jwtAuth, async (req, res, next) => {
 usersRouter.post(
   '/addresses',
   jwtAuth,
+  normalizeAddressCoordinates,
   validationMiddleware(CreateAddressDto),
   async (req, res, next) => {
     try {
@@ -190,6 +205,7 @@ usersRouter.post(
 usersRouter.patch(
   '/addresses/:id',
   jwtAuth,
+  normalizeAddressCoordinates,
   validationMiddleware(UpdateAddressDtoClass),
   async (req, res, next) => {
     try {

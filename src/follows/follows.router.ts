@@ -15,7 +15,8 @@ const followsRouter = Router();
  */
 followsRouter.post('/chef/:chefId', jwtAuth, async (req, res, next) => {
   try {
-    const result = await followsService.follow((req.user as any).id, req.params.chefId as string);
+    const userId = await followsService.resolveFollowerUserId(req.user);
+    const result = await followsService.follow(userId, req.params.chefId as string);
     res.json(result);
   } catch (error) {
     next(error);
@@ -33,7 +34,8 @@ followsRouter.post('/chef/:chefId', jwtAuth, async (req, res, next) => {
  */
 followsRouter.delete('/chef/:chefId', jwtAuth, async (req, res, next) => {
   try {
-    await followsService.unfollow((req.user as any).id, req.params.chefId as string);
+    const userId = await followsService.resolveFollowerUserId(req.user);
+    await followsService.unfollow(userId, req.params.chefId as string);
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -51,7 +53,8 @@ followsRouter.delete('/chef/:chefId', jwtAuth, async (req, res, next) => {
  */
 followsRouter.get('/following', jwtAuth, async (req, res, next) => {
   try {
-    const result = await followsService.findFollowing((req.user as any).id);
+    const userId = await followsService.resolveFollowerUserId(req.user);
+    const result = await followsService.findFollowing(userId);
     res.json(result);
   } catch (error) {
     next(error);
