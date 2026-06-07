@@ -173,7 +173,43 @@ export class AuthService {
       chefProfile = await chefsService.findByPhone(phone);
       if (chefProfile) {
         isChef = true;
-        person = chefProfile; // Use chef record as the identity
+        const existingUser = await prisma.user.findFirst({
+          where: {
+            OR: [{ phone: chefProfile.phone }, { email: chefProfile.email }],
+          },
+        });
+
+        if (existingUser) {
+          person = existingUser;
+          await prisma.chef.update({
+            where: { id: chefProfile.id },
+            data: { user_id: existingUser.id },
+          });
+          if (existingUser.role !== Role.CHEF) {
+            person = await prisma.user.update({
+              where: { id: existingUser.id },
+              data: { role: Role.CHEF },
+            });
+          }
+        } else {
+          person = await prisma.user.create({
+            data: {
+              name: chefProfile.name,
+              phone: chefProfile.phone,
+              email: chefProfile.email,
+              password: chefProfile.password,
+              role: Role.CHEF,
+              gender: 'OTHER',
+              latitude: chefProfile.latitude,
+              longitude: chefProfile.longitude,
+            },
+          });
+
+          await prisma.chef.update({
+            where: { id: chefProfile.id },
+            data: { user_id: person.id },
+          });
+        }
       }
     }
 

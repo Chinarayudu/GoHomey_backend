@@ -69,7 +69,8 @@ function normalizeAddressCoordinates(req: any, _res: any, next: any) {
 // GET /api/v1/users/profile
 usersRouter.get('/profile', jwtAuth, async (req, res, next) => {
   try {
-    const user = await usersService.findOneWithChef({ id: (req.user as any).id });
+    const userId = await usersService.resolveAuthenticatedUserId(req.user);
+    const user = await usersService.findOneWithChef({ id: userId });
     res.json(user);
   } catch (error) {
     next(error);
@@ -107,8 +108,9 @@ usersRouter.patch(
   validationMiddleware(UpdateUserDto),
   async (req, res, next) => {
     try {
+      const userId = await usersService.resolveAuthenticatedUserId(req.user);
       const result = await usersService.update({
-        where: { id: (req.user as any).id },
+        where: { id: userId },
         data: req.body,
       });
       res.json(result);
@@ -150,7 +152,8 @@ usersRouter.get('/', jwtAuth, checkRoles(Role.ADMIN), (req, res) => {
  */
 usersRouter.get('/addresses', jwtAuth, async (req, res, next) => {
   try {
-    const result = await usersService.findAddresses((req.user as any).id);
+    const userId = await usersService.resolveAuthenticatedUserId(req.user);
+    const result = await usersService.findAddresses(userId);
     res.json(result);
   } catch (error) {
     next(error);
@@ -179,7 +182,8 @@ usersRouter.post(
   validationMiddleware(CreateAddressDto),
   async (req, res, next) => {
     try {
-      const result = await usersService.addAddress((req.user as any).id, req.body);
+      const userId = await usersService.resolveAuthenticatedUserId(req.user);
+      const result = await usersService.addAddress(userId, req.body);
       res.status(201).json(result);
     } catch (error) {
       next(error);
@@ -209,7 +213,8 @@ usersRouter.patch(
   validationMiddleware(UpdateAddressDtoClass),
   async (req, res, next) => {
     try {
-      const result = await usersService.updateAddress(req.params.id as string, (req.user as any).id, req.body);
+      const userId = await usersService.resolveAuthenticatedUserId(req.user);
+      const result = await usersService.updateAddress(req.params.id as string, userId, req.body);
       res.json(result);
     } catch (error) {
       next(error);
@@ -228,7 +233,8 @@ usersRouter.patch(
  */
 usersRouter.delete('/addresses/:id', jwtAuth, async (req, res, next) => {
   try {
-    await usersService.removeAddress(req.params.id as string, (req.user as any).id);
+    const userId = await usersService.resolveAuthenticatedUserId(req.user);
+    await usersService.removeAddress(req.params.id as string, userId);
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -275,7 +281,8 @@ usersRouter.patch('/location', jwtAuth, async (req, res, next) => {
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({ status: 'error', message: 'Latitude and Longitude are required' });
     }
-    const result = await usersService.updateLocation((req.user as any).id, latitude, longitude);
+    const userId = await usersService.resolveAuthenticatedUserId(req.user);
+    const result = await usersService.updateLocation(userId, latitude, longitude);
     res.json({ status: 'success', message: 'Location updated', data: result });
   } catch (error) {
     next(error);

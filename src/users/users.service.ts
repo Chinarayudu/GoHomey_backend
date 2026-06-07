@@ -1,6 +1,6 @@
 import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
-import { User, Prisma } from '@prisma/client';
+import { User, Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const safeUserSelect = {
@@ -64,7 +64,94 @@ const safeAddressSelect = {
   updated_at: true,
 };
 
+function createHttpError(message: string, status: number) {
+  const error: any = new Error(message);
+  error.status = status;
+  return error;
+}
+
 export class UsersService {
+  async resolveAuthenticatedUserId(authUser: any) {
+    if (!authUser) {
+      throw createHttpError('Unauthorized', 401);
+    }
+
+    if (authUser.id) {
+      const user = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        select: { id: true },
+      });
+
+      if (user) {
+        return user.id;
+      }
+    }
+
+    const chef = await prisma.chef.findFirst({
+      where: {
+        OR: [
+          ...(authUser.id ? [{ id: authUser.id }, { user_id: authUser.id }] : []),
+          ...(authUser.phone ? [{ phone: authUser.phone }] : []),
+          ...(authUser.email ? [{ email: authUser.email }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        user_id: true,
+        name: true,
+        phone: true,
+        email: true,
+        password: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    if (!chef) {
+      throw createHttpError('User profile not found for this token', 403);
+    }
+
+    if (chef.user_id) {
+      return chef.user_id;
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [{ phone: chef.phone }, { email: chef.email }],
+      },
+      select: { id: true },
+    });
+
+    if (existingUser) {
+      await prisma.chef.update({
+        where: { id: chef.id },
+        data: { user_id: existingUser.id },
+      });
+      return existingUser.id;
+    }
+
+    const createdUser = await prisma.user.create({
+      data: {
+        name: chef.name,
+        phone: chef.phone,
+        email: chef.email,
+        password: chef.password,
+        role: Role.CHEF,
+        gender: 'OTHER',
+        latitude: chef.latitude,
+        longitude: chef.longitude,
+      },
+      select: { id: true },
+    });
+
+    await prisma.chef.update({
+      where: { id: chef.id },
+      data: { user_id: createdUser.id },
+    });
+
+    return createdUser.id;
+  }
+
   async findOne(where: Prisma.UserWhereUniqueInput): Promise<User | null> {
     return prisma.user.findUnique({
       where,
