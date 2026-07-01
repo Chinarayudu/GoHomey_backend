@@ -1,0 +1,5 @@
+
+> homey_backend@0.0.1 tunnel
+> lt --port 3000 --subdomain gohomey-dev
+
+your url is: https://hungry-warthog-6.loca.lt

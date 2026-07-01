@@ -145,7 +145,7 @@ export class AdminService {
           },
         },
         payment: true,
-        delivery: {
+      delivery: {
           include: {
             partner: true,
           },

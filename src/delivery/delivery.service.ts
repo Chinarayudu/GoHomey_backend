@@ -1,4 +1,5 @@
 import { prisma } from '../prisma/prisma.service';
+import { DeliveryStatus } from '@prisma/client';
 import {
   ShadowfaxClient,
   normalizeIndianPhone,
@@ -6,10 +7,148 @@ import {
   formatShadowfaxError,
   resolveShadowfaxApiMode,
   resolveShadowfaxBaseUrl,
+  resolveShadowfaxClientCode,
+  shouldUseShadowfaxStagingCoordinates,
+  SHADOWFAX_STAGING_SERVICEABLE_LOCATION,
+  type ShadowfaxCreateOrderResponse,
   type ShadowfaxCreateOrderPayload,
+  type ShadowfaxMarketplaceOrderStatusResponse,
+  type ShadowfaxSandboxAction,
+  type ShadowfaxSandboxOptions,
 } from './shadowfax.client';
 
 export class DeliveryService {
+  private formatShadowfaxTimestamp(date = new Date()): string {
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return (
+      [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join(
+        '-',
+      ) +
+      ` ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    );
+  }
+
+  private extractShadowfaxOrderId(
+    response: ShadowfaxCreateOrderResponse,
+    fallbackOrderId: string,
+  ): string {
+    const externalOrderId =
+      response.sfx_order_id ||
+      response.order_id ||
+      response.id ||
+      response.flash_order_id ||
+      response.awb ||
+      response.data?.sfx_order_id ||
+      response.data?.order_id ||
+      response.data?.id ||
+      response.data?.flash_order_id ||
+      response.data?.awb ||
+      fallbackOrderId;
+
+    return String(externalOrderId);
+  }
+
+  private extractShadowfaxTrackingUrl(
+    response: ShadowfaxCreateOrderResponse,
+  ): string | undefined {
+    return this.normalizeShadowfaxTrackingUrl(
+      response.tracking_url || response.data?.tracking_url,
+    );
+  }
+
+  private normalizeShadowfaxTrackingUrl(
+    trackingUrl?: string | null,
+  ): string | undefined {
+    const trimmed = trackingUrl?.trim();
+    if (!trimmed) return undefined;
+
+    const unavailableValues = new Set(['na', 'n/a', 'null', 'none', '-']);
+    if (unavailableValues.has(trimmed.toLowerCase())) return undefined;
+
+    const urlMatch = trimmed.match(/https?:\/\/[^\s)\]]+/i);
+    return urlMatch?.[0];
+  }
+
+  private mapShadowfaxDeliveryStatus(status?: string): DeliveryStatus | null {
+    switch (status?.toUpperCase()) {
+      case 'CREATED':
+      case 'ALLOTTED':
+      case 'ALLOTED':
+      case 'ACCEPTED':
+      case 'ARRIVED':
+      case 'ARRIVED_AT_STORE':
+        return DeliveryStatus.ASSIGNED;
+      case 'COLLECTED':
+      case 'DISPATCHED':
+      case 'CUSTOMER_DOOR_STEP':
+      case 'CUSTOMER_DOORSTEP':
+      case 'CUSTOMER_DOORSTEP_ARRIVAL':
+      case 'ARRIVAL_CUSTOMER_DOORSTEP':
+      case 'ARRIVED_CUSTOMER_DOORSTEP':
+        return DeliveryStatus.PICKED_UP;
+      case 'DELIVERED':
+        return DeliveryStatus.DELIVERED;
+      case 'CANCELLED':
+      case 'CANCELLED_BY_CUSTOMER':
+      case 'CUSTOMER_RETURN':
+      case 'RETURNED':
+      case 'RETURNED_TO_SELLER':
+      case 'SELLER_RETURN':
+      case 'RTS_INITIATED':
+      case 'RTS_COMPLETED':
+        return DeliveryStatus.FAILED;
+      default:
+        return null;
+    }
+  }
+
+  private getMarketplaceTrackingUrl(
+    response: ShadowfaxMarketplaceOrderStatusResponse,
+  ): string | undefined {
+    return this.normalizeShadowfaxTrackingUrl(
+      response.data?.track_url || response.data?.tracking_url,
+    );
+  }
+
+  private buildShadowfaxOrderItems(
+    items:
+      | Array<{
+          id?: string | null;
+          item_id?: string | null;
+          quantity?: number | null;
+          price?: number | null;
+          daily_meal?: { meal_name?: string | null } | null;
+          pantry_item?: { name?: string | null } | null;
+          social_event?: { title?: string | null } | null;
+          fuel_slot?: { time_slot?: string | null } | null;
+        }>
+      | undefined,
+    orderTotal: number,
+  ) {
+    if (!items?.length) {
+      return [
+        {
+          name: 'GoHomey order',
+          price: Math.max(Number(orderTotal || 0), 1),
+          quantity: 1,
+          id: 'gohomey-order',
+        },
+      ];
+    }
+
+    return items.map((item, index) => ({
+      name:
+        item.daily_meal?.meal_name ||
+        item.pantry_item?.name ||
+        item.social_event?.title ||
+        item.fuel_slot?.time_slot ||
+        `GoHomey item ${index + 1}`,
+      price: Math.max(Number(item.price || 0), 1),
+      quantity: Math.max(Number(item.quantity || 1), 1),
+      id: item.item_id || item.id || `item-${index + 1}`,
+    }));
+  }
+
   async createDelivery(orderId: string, deliveryPartnerId?: string) {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
@@ -52,7 +191,10 @@ export class DeliveryService {
   async updateDeliveryStatus(id: string, status: any) {
     const delivery = await prisma.delivery.update({
       where: { id },
-      data: { status },
+      data: {
+        status,
+        ...(status === 'DELIVERED' ? { delivered_time: new Date() } : {}),
+      },
     });
 
     if (status === 'DELIVERED') {
@@ -85,7 +227,7 @@ export class DeliveryService {
   }
 
   /**
-   * One-click admin dispatch: READY_FOR_PICKUP orders → delivery records → Shadowfax.
+   * One-click admin dispatch: READY_FOR_PICKUP orders -> delivery records -> Shadowfax.
    * @param orderIds Optional subset of order IDs (from admin multi-select). When omitted, dispatches all eligible ready orders.
    */
   async dispatchReadyForPickupToShadowfax(orderIds?: string[]) {
@@ -134,7 +276,7 @@ export class DeliveryService {
           ? `Selected orders are not eligible: ${selected
               .map(
                 (o) =>
-                  `${o.id.slice(0, 8)}… status=${o.status} delivery=${o.delivery?.status ?? 'none'}`,
+                  `${o.id.slice(0, 8)}... status=${o.status} delivery=${o.delivery?.status ?? 'none'}`,
               )
               .join('; ')}`
           : 'None of the selected order IDs were found.';
@@ -321,6 +463,16 @@ export class DeliveryService {
       id: string;
       total_price: number;
       payment?: { status: string } | null;
+      items?: Array<{
+        id?: string | null;
+        item_id?: string | null;
+        quantity?: number | null;
+        price?: number | null;
+        daily_meal?: { meal_name?: string | null } | null;
+        pantry_item?: { name?: string | null } | null;
+        social_event?: { title?: string | null } | null;
+        fuel_slot?: { time_slot?: string | null } | null;
+      }>;
     },
     chef: {
       name: string;
@@ -348,10 +500,21 @@ export class DeliveryService {
     console.log(`[Shadowfax API] mode=${apiMode} base=${apiBaseUrl}`);
 
     const apiKey = process.env.SHADOWFAX_API_TOKEN || partner.api_key;
-    const creditsKey =
-      process.env.SHADOWFAX_CREDITS_KEY ||
-      process.env.SHADOWFAX_CLIENT_CODE ||
-      apiKey;
+    const clientCode =
+      resolveShadowfaxClientCode() || process.env.SHADOWFAX_CREDITS_KEY;
+    const stagingLocation = shouldUseShadowfaxStagingCoordinates()
+      ? SHADOWFAX_STAGING_SERVICEABLE_LOCATION
+      : null;
+    const chefPhone = isValidIndianMobile(chef.phone)
+      ? normalizeIndianPhone(chef.phone)
+      : stagingLocation
+        ? '9999999999'
+        : null;
+    const customerPhone = isValidIndianMobile(user.phone)
+      ? normalizeIndianPhone(user.phone)
+      : stagingLocation
+        ? '9999999999'
+        : null;
 
     if (!apiKey) {
       return {
@@ -359,31 +522,31 @@ export class DeliveryService {
         error: 'Shadowfax API token is not configured on the server',
       };
     }
-    if (!creditsKey) {
+    if (!clientCode) {
       return {
         success: false,
-        error: 'Shadowfax credits key is not configured',
+        error: 'Shadowfax client code is not configured',
       };
     }
-    if (!userAddress?.address_line) {
+    if (!userAddress?.address_line && !stagingLocation) {
       return {
         success: false,
         error: 'Customer has no default delivery address',
       };
     }
-    if (!chef.kitchen_address?.trim()) {
+    if (!chef.kitchen_address?.trim() && !stagingLocation) {
       return {
         success: false,
         error: 'Chef kitchen_address is missing',
       };
     }
-    if (!isValidIndianMobile(chef.phone)) {
+    if (!chefPhone) {
       return {
         success: false,
         error: `Chef phone is not a valid Indian mobile: ${chef.phone}`,
       };
     }
-    if (!isValidIndianMobile(user.phone)) {
+    if (!customerPhone) {
       return {
         success: false,
         error: `Customer phone is not a valid Indian mobile: ${user.phone}`,
@@ -393,45 +556,65 @@ export class DeliveryService {
     const client = ShadowfaxClient.fromEnv(apiKey, partner.base_url);
 
     const isPrepaid = order.payment?.status === 'COMPLETED';
-    const cashToCollect = isPrepaid ? 0 : order.total_price;
 
     const payload: ShadowfaxCreateOrderPayload = {
+      has_tip: false,
+      tip_amount: 0,
+      client_code: clientCode,
       pickup_details: {
         name: chef.name || 'Chef',
-        contact_number: normalizeIndianPhone(chef.phone),
-        address: chef.kitchen_address || 'Kitchen address not set',
-        latitude: chef.latitude ?? undefined,
-        longitude: chef.longitude ?? undefined,
+        contact_number: chefPhone,
+        city: 'Bengaluru',
+        address:
+          chef.kitchen_address ||
+          'GoHomey staging pickup, Koramangala, Bengaluru',
+        latitude: stagingLocation?.latitude ?? chef.latitude ?? undefined,
+        longitude: stagingLocation?.longitude ?? chef.longitude ?? undefined,
       },
       drop_details: {
         name: user.name || 'Customer',
-        contact_number: normalizeIndianPhone(user.phone),
+        contact_number: customerPhone,
+        city: 'Bengaluru',
         address: this.buildAddressLine(
           userAddress?.address_line,
           userAddress?.city,
           userAddress?.state,
           userAddress?.zip_code,
-          'Customer address not set',
+          'GoHomey staging drop, Koramangala, Bengaluru',
         ),
-        latitude: userAddress?.latitude ?? undefined,
-        longitude: userAddress?.longitude ?? undefined,
+        latitude:
+          stagingLocation?.latitude ?? userAddress?.latitude ?? undefined,
+        longitude:
+          stagingLocation?.longitude ?? userAddress?.longitude ?? undefined,
+        delivery_otp: '7412',
       },
+      order_items: this.buildShadowfaxOrderItems(
+        order.items,
+        order.total_price,
+      ),
       order_details: {
-        order_id: order.id,
-        is_prepaid: isPrepaid,
-        cash_to_be_collected: cashToCollect,
-        delivery_charge_to_be_collected_from_customer: false,
-      },
-      user_details: {
-        contact_number: normalizeIndianPhone(user.phone),
-        credits_key: creditsKey,
+        scheduled_time: this.formatShadowfaxTimestamp(
+          new Date(Date.now() + 15 * 60 * 1000),
+        ),
+        order_value: Number(order.total_price || 0),
+        paid: isPrepaid ? 'true' : 'false',
+        client_order_id: order.id,
+        pickup_otp: '1232',
+        return_otp: '1234',
+        rain_flag: false,
+        delivery_instruction: {
+          drop_instruction_text: 'Please deliver the GoHomey order.',
+          take_drop_off_picture: false,
+          drop_off_picture_mandatory: false,
+          client_surge: 0,
+        },
       },
     };
 
     try {
       const createResponse = await client.createOrder(payload);
 
-      if (!createResponse.is_order_created) {
+      if (createResponse.is_order_created === false) {
         console.error('Shadowfax create-order rejected:', createResponse);
         return {
           success: false,
@@ -439,30 +622,24 @@ export class DeliveryService {
         };
       }
 
+      const externalOrderId = this.extractShadowfaxOrderId(
+        createResponse,
+        order.id,
+      );
+      const createTrackingUrl =
+        this.extractShadowfaxTrackingUrl(createResponse);
+
       console.log(
-        `[Shadowfax API] Order created flash_order_id=${createResponse.flash_order_id} message=${createResponse.message}`,
+        `[Shadowfax API] Marketplace order created external_order_id=${externalOrderId} message=${createResponse.message ?? createResponse.data?.message ?? ''}`,
       );
 
-      let trackingUrl: string | undefined;
-      let sfxStatus: string | undefined;
-      try {
-        const trackResponse = await client.trackOrder(order.id);
-        trackingUrl = trackResponse.tracking_url;
-        sfxStatus = trackResponse.status;
-        console.log(`[Shadowfax API] Track status=${sfxStatus}`);
-      } catch (trackError) {
-        console.warn(
-          '[Shadowfax API] Could not fetch tracking URL:',
-          trackError,
-        );
-      }
+      const trackingUrl: string | undefined = createTrackingUrl;
 
       return {
         success: true,
-        external_order_id: createResponse.flash_order_id || order.id,
+        external_order_id: externalOrderId,
         external_tracking_url: trackingUrl,
         status: 'ASSIGNED',
-        shadowfax_status: sfxStatus,
         shadowfax_message: createResponse.message,
       };
     } catch (error) {
@@ -483,6 +660,14 @@ export class DeliveryService {
             chef: true,
             payment: true,
             delivery_address: true,
+            items: {
+              include: {
+                daily_meal: true,
+                pantry_item: true,
+                social_event: true,
+                fuel_slot: true,
+              },
+            },
             user: {
               include: {
                 addresses: {
@@ -532,6 +717,291 @@ export class DeliveryService {
         external_tracking_url: externalResponse.external_tracking_url,
       },
     });
+  }
+
+  async updateShadowfaxSandboxStatus(
+    deliveryId: string,
+    action: ShadowfaxSandboxAction,
+    options: ShadowfaxSandboxOptions = {},
+  ) {
+    if (resolveShadowfaxApiMode() !== 'testing') {
+      const err: any = new Error(
+        'Shadowfax sandbox status updates are allowed only in testing mode',
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    const delivery = await prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: { partner: true },
+    });
+
+    if (!delivery) {
+      const err: any = new Error('Delivery not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const sfxOrderId = delivery.external_tracking_id;
+    if (!sfxOrderId) {
+      const err: any = new Error(
+        'Delivery has no Shadowfax order ID. Dispatch it to Shadowfax first.',
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    const partner = delivery.partner ?? (await this.getShadowfaxPartner());
+    const apiKey = process.env.SHADOWFAX_API_TOKEN || partner.api_key;
+    if (!apiKey) {
+      const err: any = new Error(
+        'Shadowfax API token is not configured on the server',
+      );
+      err.status = 500;
+      throw err;
+    }
+
+    const client = ShadowfaxClient.fromEnv(apiKey, partner.base_url);
+    const timeArrival =
+      options.time_arrival || this.formatShadowfaxTimestamp(new Date());
+
+    let response: unknown;
+    switch (action) {
+      case 'ALLOT':
+        response = await client.allotSandboxRider(
+          sfxOrderId,
+          options.rider_id,
+          options.only_allot,
+        );
+        break;
+      case 'ARRIVE_AT_STORE':
+        response = await client.updateSandboxStoreArrival(
+          sfxOrderId,
+          timeArrival,
+        );
+        break;
+      case 'COLLECT':
+        response = await client.collectSandboxOrder(
+          sfxOrderId,
+          options.pickup_lat,
+          options.pickup_lng,
+        );
+        break;
+      case 'CUSTOMER_DOORSTEP':
+        response = await client.updateSandboxCustomerDoorstepArrival(
+          sfxOrderId,
+          timeArrival,
+          options.arrival_lat,
+          options.arrival_lng,
+          options.arrival_accuracy,
+        );
+        break;
+      case 'DELIVER':
+        response = await client.deliverSandboxOrder(
+          sfxOrderId,
+          options.delivery_latitude,
+          options.delivery_longitude,
+          options.is_partial_delivery,
+        );
+        break;
+      case 'CUSTOMER_RETURN':
+        response = await client.customerReturnSandboxOrder(
+          sfxOrderId,
+          options.return_reason,
+        );
+        break;
+      case 'SELLER_RETURN':
+        response = await client.sellerReturnSandboxOrder(
+          sfxOrderId,
+          options.rts_order_id || sfxOrderId,
+        );
+        break;
+      default: {
+        const err: any = new Error(
+          `Unsupported Shadowfax sandbox action: ${action}`,
+        );
+        err.status = 400;
+        throw err;
+      }
+    }
+
+    return {
+      message: 'Shadowfax sandbox status update sent',
+      delivery_id: delivery.id,
+      shadowfax_order_id: sfxOrderId,
+      action,
+      response,
+    };
+  }
+
+  async getOrderLiveTracking(
+    orderId: string,
+    requester: { id: string; role?: string },
+  ) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        chef: { select: { id: true, user_id: true } },
+        delivery: { include: { partner: true } },
+      },
+    });
+
+    if (!order) {
+      const err: any = new Error('Order not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const canView =
+      requester.role === 'ADMIN' ||
+      order.user_id === requester.id ||
+      order.chef_id === requester.id ||
+      order.chef.user_id === requester.id;
+
+    if (!canView) {
+      const err: any = new Error(
+        'Forbidden: cannot view tracking for this order',
+      );
+      err.status = 403;
+      throw err;
+    }
+
+    const delivery = order.delivery;
+    if (!delivery) {
+      return {
+        order_id: order.id,
+        order_status: order.status,
+        delivery_status: null,
+        tracking_url: null,
+        tracking_id: null,
+        is_live_tracking_available: false,
+        message: 'Delivery has not been assigned yet',
+      };
+    }
+
+    let trackingUrl = this.normalizeShadowfaxTrackingUrl(
+      delivery.external_tracking_url,
+    );
+    let providerStatus: string | undefined;
+    let trackingRefreshError: string | undefined;
+    let trackingMessage: string | undefined;
+    let rider:
+      | {
+          name?: string;
+          phone?: string;
+          latitude?: number;
+          longitude?: number;
+        }
+      | undefined;
+    let pickupEta: number | undefined;
+    let dropEta: number | undefined;
+    let statusUpdated = false;
+
+    if (delivery.external_tracking_id) {
+      const apiKey =
+        process.env.SHADOWFAX_API_TOKEN || delivery.partner?.api_key;
+
+      if (!apiKey) {
+        trackingRefreshError =
+          'Shadowfax API token is not configured on the server';
+      } else {
+        try {
+          const client = ShadowfaxClient.fromEnv(
+            apiKey,
+            delivery.partner?.base_url,
+          );
+          const statusResponse = await client.getOrderStatus(
+            delivery.external_tracking_id,
+          );
+          const statusData = statusResponse.data;
+
+          providerStatus = statusData?.status;
+          const marketplaceTrackingUrl =
+            this.getMarketplaceTrackingUrl(statusResponse);
+          trackingUrl = marketplaceTrackingUrl || trackingUrl;
+          pickupEta = statusData?.order_details?.pickup_eta;
+          dropEta = statusData?.order_details?.drop_eta;
+
+          const riderLocation = statusData?.rider_details?.rider_location;
+          const riderLatitude =
+            riderLocation?.latitude !== undefined
+              ? Number(riderLocation.latitude)
+              : undefined;
+          const riderLongitude =
+            riderLocation?.longitude !== undefined
+              ? Number(riderLocation.longitude)
+              : undefined;
+
+          const riderDetails = {
+            name: statusData?.rider_details?.rider_name,
+            phone:
+              statusData?.rider_details?.rider_phone ||
+              statusData?.rider_details?.rider_contact,
+            latitude: Number.isFinite(riderLatitude)
+              ? riderLatitude
+              : undefined,
+            longitude: Number.isFinite(riderLongitude)
+              ? riderLongitude
+              : undefined,
+          };
+          rider = Object.values(riderDetails).some(
+            (value) => value !== undefined,
+          )
+            ? riderDetails
+            : undefined;
+
+          const internalStatus =
+            this.mapShadowfaxDeliveryStatus(providerStatus);
+
+          if (internalStatus && internalStatus !== delivery.status) {
+            await this.updateDeliveryStatus(delivery.id, internalStatus);
+            delivery.status = internalStatus;
+            statusUpdated = true;
+          }
+
+          if (trackingUrl && trackingUrl !== delivery.external_tracking_url) {
+            await prisma.delivery.update({
+              where: { id: delivery.id },
+              data: { external_tracking_url: trackingUrl },
+            });
+          } else if (!trackingUrl && delivery.external_tracking_url) {
+            await prisma.delivery.update({
+              where: { id: delivery.id },
+              data: { external_tracking_url: null },
+            });
+          }
+        } catch (error) {
+          trackingRefreshError = formatShadowfaxError(error);
+        }
+      }
+    }
+
+    if (
+      !trackingUrl &&
+      delivery.external_tracking_id &&
+      !trackingRefreshError
+    ) {
+      trackingMessage =
+        'Shadowfax Marketplace order is assigned, but Shadowfax has not returned a live map URL yet.';
+    }
+
+    return {
+      order_id: order.id,
+      order_status: order.status,
+      delivery_id: delivery.id,
+      delivery_status: delivery.status,
+      tracking_id: delivery.external_tracking_id,
+      tracking_url: trackingUrl || null,
+      provider_status: providerStatus,
+      is_live_tracking_available: Boolean(trackingUrl),
+      rider,
+      pickup_eta_minutes: pickupEta,
+      drop_eta_minutes: dropEta,
+      status_updated: statusUpdated,
+      tracking_refresh_error: trackingRefreshError,
+      tracking_message: trackingMessage,
+    };
   }
 
   async assignPartnerToDelivery(deliveryId: string) {

@@ -7,24 +7,97 @@ import crypto from 'crypto';
 const webhooksRouter = Router();
 
 function mapShadowfaxStatus(status: string): DeliveryStatus | null {
-  switch (status) {
+  switch (status.toUpperCase()) {
     case 'CREATED':
     case 'ALLOTTED':
+    case 'ALLOTED':
     case 'ACCEPTED':
     case 'ARRIVED':
+    case 'ARRIVED_AT_STORE':
       return DeliveryStatus.ASSIGNED;
     case 'COLLECTED':
     case 'CUSTOMER_DOOR_STEP':
+    case 'CUSTOMER_DOORSTEP':
+    case 'CUSTOMER_DOORSTEP_ARRIVAL':
+    case 'ARRIVAL_CUSTOMER_DOORSTEP':
+    case 'ARRIVED_CUSTOMER_DOORSTEP':
+    case 'DISPATCHED':
       return DeliveryStatus.PICKED_UP;
     case 'DELIVERED':
       return DeliveryStatus.DELIVERED;
     case 'CANCELLED':
+    case 'CANCELLED_BY_CUSTOMER':
+    case 'CUSTOMER_RETURN':
+    case 'RETURNED':
+    case 'RETURNED_TO_SELLER':
+    case 'SELLER_RETURN':
     case 'RTS_INITIATED':
     case 'RTS_COMPLETED':
       return DeliveryStatus.FAILED;
     default:
       return null;
   }
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number') return String(value);
+  }
+  return undefined;
+}
+
+function normalizeShadowfaxTrackingUrl(
+  trackingUrl?: string | null,
+): string | undefined {
+  const trimmed = trackingUrl?.trim();
+  if (!trimmed) return undefined;
+
+  const unavailableValues = new Set(['na', 'n/a', 'null', 'none', '-']);
+  if (unavailableValues.has(trimmed.toLowerCase())) return undefined;
+
+  const urlMatch = trimmed.match(/https?:\/\/[^\s)\]]+/i);
+  return urlMatch?.[0];
+}
+
+function extractShadowfaxCallback(body: any) {
+  const order = body?.order || body?.data || body?.payload || {};
+  const coid = firstString(
+    body?.coid,
+    body?.order_id,
+    body?.client_order_id,
+    body?.clientOrderId,
+    body?.sfx_order_id,
+    body?.flash_order_id,
+    order?.coid,
+    order?.order_id,
+    order?.client_order_id,
+    order?.clientOrderId,
+    order?.sfx_order_id,
+    order?.flash_order_id,
+  );
+  const status = firstString(
+    body?.status,
+    body?.order_status,
+    body?.event,
+    body?.event_type,
+    order?.status,
+    order?.order_status,
+    order?.event,
+    order?.event_type,
+  )?.toUpperCase();
+  const trackingUrl = normalizeShadowfaxTrackingUrl(
+    firstString(
+      body?.track_url,
+      body?.tracking_url,
+      body?.track,
+      order?.track_url,
+      order?.tracking_url,
+      order?.track,
+    ),
+  );
+
+  return { coid, status, trackingUrl };
 }
 
 /**
@@ -48,47 +121,62 @@ function mapShadowfaxStatus(status: string): DeliveryStatus | null {
  *       200:
  *         description: Webhook received successfully
  */
-// POST /api/v1/webhooks/shadowfax
-webhooksRouter.post('/shadowfax', async (req, res) => {
-  try {
-    const { coid, status } = req.body;
+async function processShadowfaxWebhook(
+  coid: string,
+  status?: string,
+  trackingUrl?: string,
+) {
+  const internalStatus = status ? mapShadowfaxStatus(status) : null;
 
-    if (!coid || !status) {
-      return res.status(400).json({ error: 'Invalid payload: coid and status required' });
+  const delivery = await prisma.delivery.findFirst({
+    where: {
+      OR: [{ order_id: String(coid) }, { external_tracking_id: String(coid) }],
+    },
+  });
+
+  if (delivery) {
+    if (internalStatus && delivery.status !== internalStatus) {
+      console.log(
+        `[Shadowfax Webhook] Updating Delivery ${delivery.id} status to ${internalStatus}`,
+      );
+      await deliveryService.updateDeliveryStatus(delivery.id, internalStatus);
     }
-
-    console.log(`[Shadowfax Webhook] Received status "${status}" for order ID: ${coid}`);
-
-    const internalStatus = mapShadowfaxStatus(status);
-
-    if (internalStatus) {
-      const delivery = await prisma.delivery.findFirst({
-        where: {
-          OR: [
-            { order_id: String(coid) },
-            { external_tracking_id: String(coid) },
-          ],
-        },
+    if (trackingUrl && trackingUrl !== delivery.external_tracking_url) {
+      await prisma.delivery.update({
+        where: { id: delivery.id },
+        data: { external_tracking_url: trackingUrl },
       });
-
-      if (delivery) {
-        if (delivery.status !== internalStatus) {
-          console.log(
-            `[Shadowfax Webhook] Updating Delivery ${delivery.id} status to ${internalStatus}`,
-          );
-          await deliveryService.updateDeliveryStatus(delivery.id, internalStatus);
-        }
-      } else {
-        console.warn(`[Shadowfax Webhook] No matching delivery found for coid: ${coid}`);
-      }
     }
-
-    res.status(200).json({ received: true });
-  } catch (error) {
-    console.error('Shadowfax webhook processing error:', error);
-    res.status(500).json({ error: 'Webhook processing failed' });
+  } else {
+    console.warn(
+      `[Shadowfax Webhook] No matching delivery found for coid: ${coid}`,
+    );
   }
-});
+}
+
+function handleShadowfaxWebhook(req: any, res: any) {
+  const { coid, status, trackingUrl } = extractShadowfaxCallback(req.body);
+
+  if (!coid) {
+    return res.status(400).json({
+      error: 'Invalid payload: order identifier is required',
+    });
+  }
+
+  console.log(
+    `[Shadowfax Webhook] Received ${status ? `status "${status}"` : 'location update'} for order ID: ${coid}`,
+  );
+
+  res.status(200).json({ received: true });
+
+  processShadowfaxWebhook(coid, status, trackingUrl).catch((error) => {
+    console.error('Shadowfax webhook processing error:', error);
+  });
+}
+
+// POST or PUT /api/v1/webhooks/shadowfax
+webhooksRouter.post('/shadowfax', handleShadowfaxWebhook);
+webhooksRouter.put('/shadowfax', handleShadowfaxWebhook);
 
 /**
  * @openapi
@@ -138,7 +226,9 @@ webhooksRouter.post('/borzo', async (req, res) => {
     const borzo_order_id = order.order_id.toString();
     const status = order.status;
 
-    console.log(`[Borzo Webhook] Received status "${status}" for Order ID: ${borzo_order_id}`);
+    console.log(
+      `[Borzo Webhook] Received status "${status}" for Order ID: ${borzo_order_id}`,
+    );
 
     let internalStatus: DeliveryStatus | null = null;
 
@@ -165,7 +255,10 @@ webhooksRouter.post('/borzo', async (req, res) => {
 
       if (delivery) {
         if (delivery.status !== internalStatus) {
-          await deliveryService.updateDeliveryStatus(delivery.id, internalStatus);
+          await deliveryService.updateDeliveryStatus(
+            delivery.id,
+            internalStatus,
+          );
         }
       } else {
         console.warn(

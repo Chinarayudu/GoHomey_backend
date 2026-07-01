@@ -11,6 +11,7 @@ import {
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
+import { deliveryService } from '../delivery/delivery.service';
 const ordersRouter = Router();
 
 /**
@@ -274,6 +275,37 @@ ordersRouter.get(
     }
   },
 );
+
+/**
+ * @openapi
+ * /orders/{id}/tracking:
+ *   get:
+ *     summary: Get live delivery tracking details for an order
+ *     tags: [Orders]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Tracking details retrieved
+ */
+// GET /api/v1/orders/:id/tracking
+ordersRouter.get('/:id/tracking', jwtAuth, async (req, res, next) => {
+  try {
+    const result = await deliveryService.getOrderLiveTracking(
+      req.params.id as string,
+      req.user as any,
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * @openapi

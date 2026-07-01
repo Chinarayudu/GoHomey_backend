@@ -3,8 +3,18 @@ import { adminService } from './admin.service';
 import { deliveryService } from '../delivery/delivery.service';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
+import type { ShadowfaxSandboxAction } from '../delivery/shadowfax.client';
 
 const adminRouter = Router();
+const shadowfaxSandboxActions = new Set<ShadowfaxSandboxAction>([
+  'ALLOT',
+  'ARRIVE_AT_STORE',
+  'COLLECT',
+  'CUSTOMER_DOORSTEP',
+  'DELIVER',
+  'CUSTOMER_RETURN',
+  'SELLER_RETURN',
+]);
 
 // Apply admin protection to all routes in this router
 adminRouter.use(jwtAuth, checkRoles(Role.ADMIN));
@@ -23,7 +33,6 @@ adminRouter.use(jwtAuth, checkRoles(Role.ADMIN));
  */
 // GET /api/v1/admin/stats
 adminRouter.get('/stats', async (req, res, next) => {
-
   try {
     const result = await adminService.getPlatformStats();
     res.json(result);
@@ -46,7 +55,6 @@ adminRouter.get('/stats', async (req, res, next) => {
  */
 // GET /api/v1/admin/top-chefs
 adminRouter.get('/top-chefs', async (req, res, next) => {
-
   try {
     const result = await adminService.getTopChefs();
     res.json(result);
@@ -69,7 +77,6 @@ adminRouter.get('/top-chefs', async (req, res, next) => {
  */
 // GET /api/v1/admin/revenue/daily
 adminRouter.get('/revenue/daily', async (req, res, next) => {
-
   try {
     const result = await adminService.getDailyRevenue();
     res.json(result);
@@ -151,12 +158,68 @@ adminRouter.post('/deliveries/dispatch-shadowfax', async (req, res, next) => {
     const orderIds = Array.isArray(req.body?.order_ids)
       ? req.body.order_ids.filter((id: unknown) => typeof id === 'string')
       : undefined;
-    const result = await deliveryService.dispatchReadyForPickupToShadowfax(orderIds);
+    const result =
+      await deliveryService.dispatchReadyForPickupToShadowfax(orderIds);
     res.json(result);
   } catch (error) {
     next(error);
   }
 });
+
+/**
+ * @openapi
+ * /admin/deliveries/{id}/shadowfax-sandbox-status:
+ *   post:
+ *     summary: Move a Shadowfax staging sandbox delivery through test statuses
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [action]
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [ALLOT, ARRIVE_AT_STORE, COLLECT, CUSTOMER_DOORSTEP, DELIVER, CUSTOMER_RETURN, SELLER_RETURN]
+ *     responses:
+ *       200:
+ *         description: Shadowfax staging status update sent
+ */
+// POST /api/v1/admin/deliveries/:id/shadowfax-sandbox-status
+adminRouter.post(
+  '/deliveries/:id/shadowfax-sandbox-status',
+  async (req, res, next) => {
+    try {
+      const action =
+        typeof req.body?.action === 'string'
+          ? req.body.action.toUpperCase()
+          : '';
+      if (!shadowfaxSandboxActions.has(action as ShadowfaxSandboxAction)) {
+        return res.status(400).json({
+          error:
+            'Invalid action. Use one of: ALLOT, ARRIVE_AT_STORE, COLLECT, CUSTOMER_DOORSTEP, DELIVER, CUSTOMER_RETURN, SELLER_RETURN',
+        });
+      }
+      const result = await deliveryService.updateShadowfaxSandboxStatus(
+        req.params.id,
+        action as ShadowfaxSandboxAction,
+        req.body,
+      );
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 /**
  * @openapi
@@ -243,7 +306,12 @@ adminRouter.get('/chefs', async (req, res, next) => {
         : applicationStatus;
     const result = await adminService.getChefs({
       applicationStatus: normalizedApplicationStatus,
-      isVerified: isVerified === 'true' ? true : isVerified === 'false' ? false : undefined,
+      isVerified:
+        isVerified === 'true'
+          ? true
+          : isVerified === 'false'
+            ? false
+            : undefined,
     });
     res.json(result);
   } catch (error) {
@@ -300,7 +368,11 @@ adminRouter.get('/chefs/:id', async (req, res, next) => {
 adminRouter.patch('/chefs/:id/application', async (req, res, next) => {
   try {
     const { status, isVerified } = req.body;
-    const result = await adminService.updateChefApplication(req.params.id, status, isVerified);
+    const result = await adminService.updateChefApplication(
+      req.params.id,
+      status,
+      isVerified,
+    );
     res.json(result);
   } catch (error) {
     next(error);
