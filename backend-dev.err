@@ -627,3 +627,282 @@ Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
   syscall: 'getaddrinfo',
   hostname: 'oriented-stingray-85931.upstash.io'
 }
+Error: read ECONNRESET
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -4077,
+  code: 'ECONNRESET',
+  syscall: 'read'
+}
+Error: read ECONNRESET
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -4077,
+  code: 'ECONNRESET',
+  syscall: 'read'
+}
+Redis Client Error Error: read ECONNRESET
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -4077,
+  code: 'ECONNRESET',
+  syscall: 'read'
+}
+Error: read ECONNRESET
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -4077,
+  code: 'ECONNRESET',
+  syscall: 'read'
+}
+Error: read ECONNRESET
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -4077,
+  code: 'ECONNRESET',
+  syscall: 'read'
+}
+Error: read ECONNRESET
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -4077,
+  code: 'ECONNRESET',
+  syscall: 'read'
+}
+Error: read ECONNRESET
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -4077,
+  code: 'ECONNRESET',
+  syscall: 'read'
+}
+Redis Client Error Error: read ECONNRESET
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -4077,
+  code: 'ECONNRESET',
+  syscall: 'read'
+}
+[Fuel Scheduler] Prep reminder sweep failed: PrismaClientKnownRequestError: 
+Invalid `prisma.fuelDailyFulfillment.findMany()` invocation in
+C:\Users\dussa\homey_backend\src\fuel\fuel.service.ts:682:60
+
+  679   now.getTime() + hoursBefore * 60 * 60 * 1000 + 10 * 60 * 1000,
+  680 );
+  681 
+→ 682 const fulfillments = await prisma.fuelDailyFulfillment.findMany(
+Can't reach database server at ep-gentle-art-amud0qm0-pooler.c-5.us-east-1.aws.neon.tech
+    at Gr.handleRequestError (C:\Users\dussa\homey_backend\node_modules\@prisma\client\src\runtime\RequestHandler.ts:237:13)
+    at Gr.handleAndLogRequestError (C:\Users\dussa\homey_backend\node_modules\@prisma\client\src\runtime\RequestHandler.ts:183:12)
+    at Gr.request (C:\Users\dussa\homey_backend\node_modules\@prisma\client\src\runtime\RequestHandler.ts:152:12)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async a (C:\Users\dussa\homey_backend\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:938:24)
+    at async FuelService.sendPrepReminders (C:\Users\dussa\homey_backend\src\fuel\fuel.service.ts:682:26)
+    at async Timeout._onTimeout (C:\Users\dussa\homey_backend\src\fuel\fuel.scheduler.ts:56:7) {
+  code: 'P1001',
+  meta: {
+    modelName: 'FuelDailyFulfillment',
+    driverAdapterError: DriverAdapterError: DatabaseNotReachable
+        at PrismaPgAdapter.onError (C:\Users\dussa\homey_backend\node_modules\@prisma\adapter-pg\dist\index.js:678:11)
+        at PrismaPgAdapter.performIO (C:\Users\dussa\homey_backend\node_modules\@prisma\adapter-pg\dist\index.js:673:12)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+        at async PrismaPgAdapter.queryRaw (C:\Users\dussa\homey_backend\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+        at async o (C:\Users\dussa\homey_backend\node_modules\@prisma\client-engine-runtime\src\tracing.ts:66:26)
+        at async e.interpretNode (C:\Users\dussa\homey_backend\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:186:26)
+        at async e.interpretNode (C:\Users\dussa\homey_backend\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:128:29)
+        at async e.interpretNode (C:\Users\dussa\homey_backend\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:272:41)
+        at async e.run (C:\Users\dussa\homey_backend\node_modules\@prisma\client-engine-runtime\src\interpreter\query-interpreter.ts:94:23)
+        at async execute (C:\Users\dussa\homey_backend\node_modules\@prisma\client\src\runtime\core\engines\client\LocalExecutor.ts:81:12) {
+      cause: [Object]
+    }
+  },
+  clientVersion: '7.6.0'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Redis Client Error Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}
+Error: getaddrinfo ENOTFOUND oriented-stingray-85931.upstash.io
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'oriented-stingray-85931.upstash.io'
+}

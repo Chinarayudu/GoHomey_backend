@@ -1,6 +1,7 @@
 import {
   IsDateString,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -25,7 +26,8 @@ export class CreateFuelPlanDto {
   price: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @IsIn([3, 7, 30])
   duration_days?: number;
 
   @IsOptional()

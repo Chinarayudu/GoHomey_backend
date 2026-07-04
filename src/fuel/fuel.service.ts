@@ -8,6 +8,14 @@ import { calculateDistance } from '../common/utils/location';
 import { notificationsService } from '../notifications/notifications.service';
 
 const FULFILLMENT_LOOKAHEAD_DAYS = 2;
+const FUEL_PLAN_DURATION_LABELS: Record<number, string> = {
+  3: '3 days',
+  7: '1 week',
+  30: '1 month',
+};
+const ALLOWED_FUEL_PLAN_DURATIONS = Object.keys(FUEL_PLAN_DURATION_LABELS).map(
+  Number,
+);
 
 function startOfDay(date: Date) {
   const copy = new Date(date);
@@ -65,20 +73,56 @@ function serializeFuelSlot(slot: any) {
   };
 }
 
+function normalizeFuelPlanDuration(value: unknown) {
+  const durationDays = Number(value ?? 30);
+
+  if (!Number.isInteger(durationDays)) {
+    const error: any = new Error('duration_days must be an integer');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!ALLOWED_FUEL_PLAN_DURATIONS.includes(durationDays)) {
+    const error: any = new Error(
+      'duration_days must be one of 3, 7, or 30 days',
+    );
+    error.status = 400;
+    throw error;
+  }
+
+  return durationDays;
+}
+
+function serializeFuelPlan(plan: any) {
+  if (!plan) return plan;
+
+  return {
+    ...plan,
+    duration_label:
+      FUEL_PLAN_DURATION_LABELS[plan.duration_days] ||
+      `${plan.duration_days} days`,
+  };
+}
+
+function serializeFuelSubscription(subscription: any) {
+  if (!subscription) return subscription;
+
+  return {
+    ...subscription,
+    ...(subscription.plan
+      ? { plan: serializeFuelPlan(subscription.plan) }
+      : {}),
+  };
+}
+
 export class FuelService {
   async createPlan(data: any) {
     const price = Number(data.price ?? data.price_to_customer);
-    const durationDays = Number(data.duration_days ?? 30);
+    const durationDays = normalizeFuelPlanDuration(data.duration_days);
     const deliveryTimeSlots = normalizeTimeSlots(data.delivery_time_slots);
 
     if (!Number.isFinite(price) || price <= 0) {
       const error: any = new Error('Fuel plan price must be greater than zero');
-      error.status = 400;
-      throw error;
-    }
-
-    if (!Number.isInteger(durationDays) || durationDays <= 0) {
-      const error: any = new Error('duration_days must be a positive integer');
       error.status = 400;
       throw error;
     }
@@ -91,7 +135,7 @@ export class FuelService {
       throw error;
     }
 
-    return prisma.fuelPlan.create({
+    const plan = await prisma.fuelPlan.create({
       data: {
         name: data.name || data.title,
         goal: data.goal || data.goal_type,
@@ -109,12 +153,16 @@ export class FuelService {
         fat: data.fat,
       },
     });
+
+    return serializeFuelPlan(plan);
   }
 
   async listPlans() {
-    return prisma.fuelPlan.findMany({
+    const plans = await prisma.fuelPlan.findMany({
       orderBy: { created_at: 'desc' },
     });
+
+    return plans.map(serializeFuelPlan);
   }
 
   async listChefPlanCatalog(chefId: string) {
@@ -129,7 +177,7 @@ export class FuelService {
     });
 
     return plans.map((plan) => ({
-      ...plan,
+      ...serializeFuelPlan(plan),
       is_enabled_for_chef: plan.slots.length > 0,
       chef_slots: plan.slots.map(serializeFuelSlot),
     }));
@@ -217,7 +265,7 @@ export class FuelService {
       throw error;
     }
 
-    return plan;
+    return serializeFuelPlan(plan);
   }
 
   async listChefsForPlan(planId: string, deliveryTimeSlot?: string) {
@@ -387,11 +435,11 @@ export class FuelService {
       subscription.id,
     );
 
-    return subscription;
+    return serializeFuelSubscription(subscription);
   }
 
   async listMySubscriptions(userId: string) {
-    return prisma.fuelSubscription.findMany({
+    const subscriptions = await prisma.fuelSubscription.findMany({
       where: { user_id: userId },
       include: {
         plan: true,
@@ -405,10 +453,12 @@ export class FuelService {
       },
       orderBy: { created_at: 'desc' },
     });
+
+    return subscriptions.map(serializeFuelSubscription);
   }
 
   async listChefSubscriptions(chefId: string) {
-    return prisma.fuelSubscription.findMany({
+    const subscriptions = await prisma.fuelSubscription.findMany({
       where: { assigned_chef_id: chefId },
       include: {
         plan: true,
@@ -418,6 +468,8 @@ export class FuelService {
       },
       orderBy: [{ status: 'asc' }, { delivery_time_slot: 'asc' }],
     });
+
+    return subscriptions.map(serializeFuelSubscription);
   }
 
   async pauseSubscription(userId: string, subscriptionId: string, data: any) {
@@ -479,7 +531,7 @@ export class FuelService {
         },
       });
 
-      return tx.fuelSubscription.update({
+      const updatedSubscription = await tx.fuelSubscription.update({
         where: { id: subscription.id },
         data: { end_date: newEndDate },
         include: {
@@ -487,6 +539,8 @@ export class FuelService {
           fulfillments: { orderBy: { fulfillment_date: 'asc' } },
         },
       });
+
+      return serializeFuelSubscription(updatedSubscription);
     });
 
     await this.generateFulfillments(
