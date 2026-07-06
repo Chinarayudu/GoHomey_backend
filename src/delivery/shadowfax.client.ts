@@ -213,6 +213,7 @@ export class ShadowfaxClient {
     endpoint: string,
     body?: unknown,
   ): Promise<T> {
+    const startedAt = Date.now();
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method,
       headers: {
@@ -224,17 +225,33 @@ export class ShadowfaxClient {
     });
 
     const data = await response.json().catch(() => ({}));
+    const durationMs = Date.now() - startedAt;
 
     if (!response.ok) {
       const message =
         (data as { message?: string }).message ||
         (data as { error?: string }).error ||
         `Shadowfax API error (${response.status})`;
+      console.error('[Shadowfax API] request failed', {
+        method,
+        endpoint,
+        status: response.status,
+        duration_ms: durationMs,
+        message,
+        response_body: data,
+      });
       const err: any = new Error(message);
       err.status = response.status;
       err.body = data;
       throw err;
     }
+
+    console.log('[Shadowfax API] request success', {
+      method,
+      endpoint,
+      status: response.status,
+      duration_ms: durationMs,
+    });
 
     return data as T;
   }

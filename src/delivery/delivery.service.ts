@@ -629,9 +629,13 @@ export class DeliveryService {
       const createTrackingUrl =
         this.extractShadowfaxTrackingUrl(createResponse);
 
-      console.log(
-        `[Shadowfax API] Marketplace order created external_order_id=${externalOrderId} message=${createResponse.message ?? createResponse.data?.message ?? ''}`,
-      );
+      console.log('[Shadowfax API] marketplace order created', {
+        order_id: order.id,
+        delivery_id: deliveryId,
+        external_order_id: externalOrderId,
+        tracking_url_present: Boolean(createTrackingUrl),
+        message: createResponse.message ?? createResponse.data?.message ?? '',
+      });
 
       const trackingUrl: string | undefined = createTrackingUrl;
 
@@ -954,6 +958,19 @@ export class DeliveryService {
           const internalStatus =
             this.mapShadowfaxDeliveryStatus(providerStatus);
 
+          console.log('[Shadowfax Tracking] status refresh', {
+            order_id: order.id,
+            delivery_id: delivery.id,
+            sfx_order_id: delivery.external_tracking_id,
+            provider_status: providerStatus,
+            internal_status: internalStatus,
+            track_url_present: Boolean(marketplaceTrackingUrl),
+            stored_track_url_present: Boolean(delivery.external_tracking_url),
+            rider_present: Boolean(rider),
+            pickup_eta_minutes: pickupEta,
+            drop_eta_minutes: dropEta,
+          });
+
           if (internalStatus && internalStatus !== delivery.status) {
             await this.updateDeliveryStatus(delivery.id, internalStatus);
             delivery.status = internalStatus;
@@ -973,6 +990,12 @@ export class DeliveryService {
           }
         } catch (error) {
           trackingRefreshError = formatShadowfaxError(error);
+          console.error('[Shadowfax Tracking] status refresh failed', {
+            order_id: order.id,
+            delivery_id: delivery.id,
+            sfx_order_id: delivery.external_tracking_id,
+            error: trackingRefreshError,
+          });
         }
       }
     }

@@ -136,9 +136,13 @@ async function processShadowfaxWebhook(
 
   if (delivery) {
     if (internalStatus && delivery.status !== internalStatus) {
-      console.log(
-        `[Shadowfax Webhook] Updating Delivery ${delivery.id} status to ${internalStatus}`,
-      );
+      console.log('[Shadowfax Webhook] updating delivery status', {
+        coid,
+        delivery_id: delivery.id,
+        previous_status: delivery.status,
+        next_status: internalStatus,
+        provider_status: status,
+      });
       await deliveryService.updateDeliveryStatus(delivery.id, internalStatus);
     }
     if (trackingUrl && trackingUrl !== delivery.external_tracking_url) {
@@ -146,11 +150,25 @@ async function processShadowfaxWebhook(
         where: { id: delivery.id },
         data: { external_tracking_url: trackingUrl },
       });
+      console.log('[Shadowfax Webhook] saved tracking URL', {
+        coid,
+        delivery_id: delivery.id,
+        tracking_url_present: true,
+      });
     }
+    console.log('[Shadowfax Webhook] processed callback', {
+      coid,
+      delivery_id: delivery.id,
+      provider_status: status,
+      internal_status: internalStatus,
+      tracking_url_present: Boolean(trackingUrl),
+    });
   } else {
-    console.warn(
-      `[Shadowfax Webhook] No matching delivery found for coid: ${coid}`,
-    );
+    console.warn('[Shadowfax Webhook] no matching delivery found', {
+      coid,
+      provider_status: status,
+      tracking_url_present: Boolean(trackingUrl),
+    });
   }
 }
 
@@ -163,11 +181,19 @@ function handleShadowfaxWebhook(req: any, res: any) {
     });
   }
 
-  console.log(
-    `[Shadowfax Webhook] Received ${status ? `status "${status}"` : 'location update'} for order ID: ${coid}`,
-  );
+  console.log('[Shadowfax Webhook] received callback', {
+    method: req.method,
+    coid,
+    provider_status: status,
+    tracking_url_present: Boolean(trackingUrl),
+    has_body: Boolean(req.body),
+  });
 
   res.status(200).json({ received: true });
+  console.log('[Shadowfax Webhook] acknowledged callback', {
+    coid,
+    status_code: 200,
+  });
 
   processShadowfaxWebhook(coid, status, trackingUrl).catch((error) => {
     console.error('Shadowfax webhook processing error:', error);
