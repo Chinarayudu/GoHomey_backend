@@ -6,6 +6,7 @@ import {
   normalizeIndianPhone,
   isValidIndianMobile,
   formatShadowfaxError,
+  normalizeShadowfaxApiToken,
   resolveShadowfaxApiMode,
   resolveShadowfaxBaseUrl,
   resolveShadowfaxClientCode,
@@ -520,7 +521,9 @@ export class DeliveryService {
     const apiBaseUrl = resolveShadowfaxBaseUrl(partner.base_url);
     console.log(`[Shadowfax API] mode=${apiMode} base=${apiBaseUrl}`);
 
-    const apiKey = process.env.SHADOWFAX_API_TOKEN || partner.api_key;
+    const apiKey =
+      normalizeShadowfaxApiToken(process.env.SHADOWFAX_API_TOKEN) ||
+      normalizeShadowfaxApiToken(partner.api_key);
     const clientCode =
       resolveShadowfaxClientCode() || process.env.SHADOWFAX_CREDITS_KEY;
     const stagingLocation = shouldUseShadowfaxStagingCoordinates()
@@ -536,6 +539,12 @@ export class DeliveryService {
       : stagingLocation
         ? '9999999999'
         : null;
+
+    console.log('[Shadowfax API] config check', {
+      token_configured: Boolean(apiKey),
+      client_code_configured: Boolean(clientCode),
+      staging_coordinates_enabled: Boolean(stagingLocation),
+    });
 
     if (!apiKey) {
       return {
@@ -778,7 +787,9 @@ export class DeliveryService {
     }
 
     const partner = delivery.partner ?? (await this.getShadowfaxPartner());
-    const apiKey = process.env.SHADOWFAX_API_TOKEN || partner.api_key;
+    const apiKey =
+      normalizeShadowfaxApiToken(process.env.SHADOWFAX_API_TOKEN) ||
+      normalizeShadowfaxApiToken(partner.api_key);
     if (!apiKey) {
       const err: any = new Error(
         'Shadowfax API token is not configured on the server',
@@ -925,7 +936,8 @@ export class DeliveryService {
 
     if (delivery.external_tracking_id) {
       const apiKey =
-        process.env.SHADOWFAX_API_TOKEN || delivery.partner?.api_key;
+        normalizeShadowfaxApiToken(process.env.SHADOWFAX_API_TOKEN) ||
+        normalizeShadowfaxApiToken(delivery.partner?.api_key);
 
       if (!apiKey) {
         trackingRefreshError =

@@ -2,13 +2,25 @@ import { prisma } from '../src/prisma/prisma.service';
 
 const CONFIRM_FLAG = '--confirm-delete-order-data';
 
+async function tableExists(tableName: string) {
+  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT FROM information_schema.tables
+      WHERE table_schema = 'public'
+      AND table_name = ${tableName}
+    ) AS "exists"
+  `;
+
+  return Boolean(rows[0]?.exists);
+}
+
 async function countRecords() {
+  const hasChefPayouts = await tableExists('ChefPayout');
   const [
     orders,
     orderItems,
     payments,
     deliveries,
-    chefPayouts,
     fuelSubscriptions,
     fuelFulfillments,
   ] = await Promise.all([
@@ -16,7 +28,6 @@ async function countRecords() {
     prisma.orderItem.count(),
     prisma.payment.count(),
     prisma.delivery.count(),
-    prisma.chefPayout.count(),
     prisma.fuelSubscription.count(),
     prisma.fuelDailyFulfillment.count(),
   ]);
@@ -26,13 +37,16 @@ async function countRecords() {
     orderItems,
     payments,
     deliveries,
-    chefPayouts,
+    chefPayouts: hasChefPayouts
+      ? await prisma.chefPayout.count()
+      : 'table missing',
     fuelSubscriptions,
     fuelFulfillments,
   };
 }
 
 async function resetOrderTestData() {
+  const hasChefPayouts = await tableExists('ChefPayout');
   const confirmed =
     process.argv.includes(CONFIRM_FLAG) ||
     process.env.CONFIRM_DELETE_ORDER_DATA === 'YES';
@@ -41,14 +55,13 @@ async function resetOrderTestData() {
     console.log('Refusing to delete order data without confirmation.');
     console.log('');
     console.log('Run one of these commands:');
-    console.log(
-      `npx ts-node scratch/reset_order_test_data.ts ${CONFIRM_FLAG}`,
-    );
-    console.log(
-      'set CONFIRM_DELETE_ORDER_DATA=YES && npx ts-node scratch/reset_order_test_data.ts',
-    );
+    console.log(`npm run reset:orders:confirm`);
+    console.log(`npx ts-node scratch/reset_order_test_data.ts ${CONFIRM_FLAG}`);
+    console.log('set CONFIRM_DELETE_ORDER_DATA=YES && npm run reset:orders');
     console.log('');
-    console.log('This deletes order/payment/delivery/payout/Fuel subscription test records.');
+    console.log(
+      'This deletes order/payment/delivery/payout/Fuel subscription test records.',
+    );
     return;
   }
 
@@ -57,7 +70,9 @@ async function resetOrderTestData() {
 
   await prisma.$transaction(async (tx) => {
     // Child/dependent records first.
-    await tx.chefPayout.deleteMany({});
+    if (hasChefPayouts) {
+      await tx.chefPayout.deleteMany({});
+    }
     await tx.delivery.deleteMany({});
     await tx.payment.deleteMany({});
     await tx.orderItem.deleteMany({});
@@ -85,7 +100,9 @@ async function resetOrderTestData() {
 
   console.log('Order test data after cleanup:');
   console.table(await countRecords());
-  console.log('Done. Users, chefs, menus, pantry items, addresses, and delivery partners were kept.');
+  console.log(
+    'Done. Users, chefs, menus, pantry items, addresses, and delivery partners were kept.',
+  );
   console.log(
     'Note: pantry inventory is not reset because the schema does not store original inventory separately.',
   );

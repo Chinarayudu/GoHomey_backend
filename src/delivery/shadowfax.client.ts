@@ -173,10 +173,22 @@ export function resolveShadowfaxClientCode(): string | undefined {
   return process.env.SHADOWFAX_CLIENT_CODE?.trim() || undefined;
 }
 
+export function normalizeShadowfaxApiToken(
+  apiKey?: string | null,
+): string | undefined {
+  const trimmed = apiKey?.trim();
+  if (!trimmed || /^(Token|Bearer)$/i.test(trimmed)) return undefined;
+
+  const prefixed = trimmed.match(/^(Token|Bearer)\s+(.+)$/i);
+  if (prefixed) return prefixed[2].trim() || undefined;
+
+  return trimmed;
+}
+
 export function formatShadowfaxAuthorization(apiKey: string): string {
-  const trimmed = apiKey.trim();
-  if (/^(Token|Bearer)\s+/i.test(trimmed)) return trimmed;
-  return `Token ${trimmed}`;
+  const normalized = normalizeShadowfaxApiToken(apiKey);
+  if (!normalized) throw new Error('Shadowfax API token is empty');
+  return `Token ${normalized}`;
 }
 
 export function shouldUseShadowfaxStagingCoordinates(): boolean {
