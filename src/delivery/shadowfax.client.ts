@@ -205,6 +205,14 @@ function shouldLogShadowfaxResponseBody(): boolean {
   return resolveShadowfaxApiMode() === 'testing';
 }
 
+function stringifyShadowfaxBody(data: unknown): string {
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return '[Unserializable Shadowfax response body]';
+  }
+}
+
 export class ShadowfaxClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -251,14 +259,19 @@ export class ShadowfaxClient {
         (data as { message?: string }).message ||
         (data as { error?: string }).error ||
         `Shadowfax API error (${response.status})`;
-      console.error('[Shadowfax API] request failed', {
+      const errorLog: Record<string, unknown> = {
         method,
         endpoint,
         status: response.status,
         duration_ms: durationMs,
         message,
-        response_body: data,
-      });
+      };
+
+      if (shouldLogShadowfaxResponseBody()) {
+        errorLog.response_body_json = stringifyShadowfaxBody(data);
+      }
+
+      console.error('[Shadowfax API] request failed', errorLog);
       const err: any = new Error(message);
       err.status = response.status;
       err.body = data;
@@ -273,7 +286,7 @@ export class ShadowfaxClient {
     };
 
     if (shouldLogShadowfaxResponseBody()) {
-      successLog.response_body = data;
+      successLog.response_body_json = stringifyShadowfaxBody(data);
     }
 
     console.log('[Shadowfax API] request success', successLog);
