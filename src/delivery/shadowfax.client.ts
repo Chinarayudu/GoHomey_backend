@@ -198,6 +198,13 @@ export function shouldUseShadowfaxStagingCoordinates(): boolean {
   );
 }
 
+function shouldLogShadowfaxResponseBody(): boolean {
+  const setting = process.env.SHADOWFAX_LOG_RESPONSE_BODY?.trim().toLowerCase();
+  if (setting === 'true') return true;
+  if (setting === 'false') return false;
+  return resolveShadowfaxApiMode() === 'testing';
+}
+
 export class ShadowfaxClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -258,12 +265,18 @@ export class ShadowfaxClient {
       throw err;
     }
 
-    console.log('[Shadowfax API] request success', {
+    const successLog: Record<string, unknown> = {
       method,
       endpoint,
       status: response.status,
       duration_ms: durationMs,
-    });
+    };
+
+    if (shouldLogShadowfaxResponseBody()) {
+      successLog.response_body = data;
+    }
+
+    console.log('[Shadowfax API] request success', successLog);
 
     return data as T;
   }

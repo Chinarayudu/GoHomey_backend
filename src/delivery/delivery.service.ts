@@ -1038,8 +1038,14 @@ export class DeliveryService {
       delivery.external_tracking_id &&
       !trackingRefreshError
     ) {
+      const normalizedProviderStatus = providerStatus?.toUpperCase();
       trackingMessage =
-        'Shadowfax Marketplace order is assigned, but Shadowfax has not returned a live map URL yet.';
+        normalizedProviderStatus === 'ACCEPTED'
+          ? 'Shadowfax has accepted the order, but a rider is not allotted yet. Shadowfax starts sending the live tracking URL from ALLOTTED status.'
+          : normalizedProviderStatus === 'ALLOTTED' ||
+              normalizedProviderStatus === 'ALLOTED'
+            ? 'Shadowfax rider is allotted, but Shadowfax has not returned a live map URL yet.'
+            : 'Shadowfax Marketplace order is assigned, but Shadowfax has not returned a live map URL yet.';
     }
 
     return {
