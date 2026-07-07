@@ -57,7 +57,9 @@ function resolvePlatformFeePaise(): number {
   const feeRupees = Number(configuredFee);
 
   if (!Number.isFinite(feeRupees) || feeRupees < 0) {
-    const error: any = new Error('HOMEY_PLATFORM_FEE_RUPEES must be a non-negative number');
+    const error: any = new Error(
+      'HOMEY_PLATFORM_FEE_RUPEES must be a non-negative number',
+    );
     error.status = 500;
     throw error;
   }
@@ -65,11 +67,34 @@ function resolvePlatformFeePaise(): number {
   return toPaise(feeRupees);
 }
 
+function resolveChefCommissionPercent(): number {
+  const configured = process.env.HOMEY_CHEF_COMMISSION_PERCENT?.trim() || '0';
+  const percent = Number(configured);
+
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    const error: any = new Error(
+      'HOMEY_CHEF_COMMISSION_PERCENT must be between 0 and 100',
+    );
+    error.status = 500;
+    throw error;
+  }
+
+  return percent;
+}
+
+function roundMoney(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
 function validateRequestedAmountPaise(
   requestedAmount: unknown,
   expectedAmountPaise: number,
 ): void {
-  if (requestedAmount === undefined || requestedAmount === null || requestedAmount === '') {
+  if (
+    requestedAmount === undefined ||
+    requestedAmount === null ||
+    requestedAmount === ''
+  ) {
     return;
   }
 
@@ -93,7 +118,10 @@ function timingSafeEqual(a: string, b: string): boolean {
   const aBuffer = Buffer.from(a);
   const bBuffer = Buffer.from(b);
 
-  return aBuffer.length === bBuffer.length && crypto.timingSafeEqual(aBuffer, bBuffer);
+  return (
+    aBuffer.length === bBuffer.length &&
+    crypto.timingSafeEqual(aBuffer, bBuffer)
+  );
 }
 
 function startOfDay(date: Date) {
@@ -110,7 +138,9 @@ function addDays(date: Date, days: number) {
 
 function parseFuelStartDate(value: Date | string | null | undefined) {
   if (!value) {
-    const error: any = new Error('Fuel subscription start_date is missing from order item');
+    const error: any = new Error(
+      'Fuel subscription start_date is missing from order item',
+    );
     error.status = 400;
     throw error;
   }
@@ -140,8 +170,13 @@ export class PaymentsService {
     return process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
   }
 
-  private async razorpayRequest<T>(endpoint: string, body: unknown): Promise<T> {
-    const auth = Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64');
+  private async razorpayRequest<T>(
+    endpoint: string,
+    body: unknown,
+  ): Promise<T> {
+    const auth = Buffer.from(`${this.keyId}:${this.keySecret}`).toString(
+      'base64',
+    );
 
     const response = await fetch(`https://api.razorpay.com/v1${endpoint}`, {
       method: 'POST',
@@ -217,7 +252,9 @@ export class PaymentsService {
     });
 
     if (!order) {
-      const error: any = new Error('Order not found for Fuel subscription creation');
+      const error: any = new Error(
+        'Order not found for Fuel subscription creation',
+      );
       error.status = 404;
       throw error;
     }
@@ -231,7 +268,9 @@ export class PaymentsService {
       }
 
       if (!item.fuel_slot?.plan) {
-        const error: any = new Error('Fuel slot or plan not found for paid order item');
+        const error: any = new Error(
+          'Fuel slot or plan not found for paid order item',
+        );
         error.status = 400;
         throw error;
       }
@@ -349,18 +388,21 @@ export class PaymentsService {
     }
 
     const receipt = `homey_${order.id.replace(/-/g, '').slice(0, 32)}`;
-    const razorpayOrder = await this.razorpayRequest<RazorpayOrderResponse>('/orders', {
-      amount,
-      currency: 'INR',
-      receipt,
-      notes: {
-        homey_order_id: order.id,
-        chef_id: order.chef_id,
-        user_id: order.user_id,
-        order_amount_paise: String(orderAmount),
-        platform_fee_paise: String(platformFee),
+    const razorpayOrder = await this.razorpayRequest<RazorpayOrderResponse>(
+      '/orders',
+      {
+        amount,
+        currency: 'INR',
+        receipt,
+        notes: {
+          homey_order_id: order.id,
+          chef_id: order.chef_id,
+          user_id: order.user_id,
+          order_amount_paise: String(orderAmount),
+          platform_fee_paise: String(platformFee),
+        },
       },
-    });
+    );
 
     const payment = order.payment
       ? await prisma.payment.update({
@@ -411,7 +453,9 @@ export class PaymentsService {
     signature: string,
   ) {
     if (!razorpayOrderId || !razorpayPaymentId || !signature) {
-      const error: any = new Error('razorpay_order_id, razorpay_payment_id and razorpay_signature are required');
+      const error: any = new Error(
+        'razorpay_order_id, razorpay_payment_id and razorpay_signature are required',
+      );
       error.status = 400;
       throw error;
     }
@@ -460,8 +504,10 @@ export class PaymentsService {
         data: { status: 'CONFIRMED' },
       });
 
-      const fuel_subscriptions =
-        await this.createFuelSubscriptionsForPaidOrder(tx, payment.order_id);
+      const fuel_subscriptions = await this.createFuelSubscriptionsForPaidOrder(
+        tx,
+        payment.order_id,
+      );
 
       return {
         success: true,
@@ -495,7 +541,160 @@ export class PaymentsService {
     return payment;
   }
 
-  async handleWebhook(rawBody: Buffer, signature: string | undefined, payload: RazorpayWebhookPayload) {
+  async releaseChefPayoutForOrder(
+    orderId: string,
+    releaseReason = 'ORDER_DELIVERED',
+  ) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        payment: true,
+        chef: {
+          select: {
+            id: true,
+            name: true,
+            bank_name: true,
+            bank_account_number: true,
+            ifsc_code: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return { released: false, reason: 'ORDER_NOT_FOUND', order_id: orderId };
+    }
+
+    if (!order.payment) {
+      return {
+        released: false,
+        reason: 'PAYMENT_NOT_FOUND',
+        order_id: orderId,
+      };
+    }
+
+    if (order.payment.status !== PaymentStatus.COMPLETED) {
+      return {
+        released: false,
+        reason: 'PAYMENT_NOT_COMPLETED',
+        order_id: orderId,
+        payment_status: order.payment.status,
+      };
+    }
+
+    const existingPayout = await prisma.chefPayout.findUnique({
+      where: { order_id: orderId },
+    });
+
+    if (existingPayout) {
+      if (order.payment.escrow_status !== 'RELEASED') {
+        await prisma.payment.update({
+          where: { id: order.payment.id },
+          data: { escrow_status: 'RELEASED' },
+        });
+      }
+
+      return {
+        released: false,
+        reason: 'ALREADY_RELEASED',
+        payout: existingPayout,
+      };
+    }
+
+    const commissionPercent = resolveChefCommissionPercent();
+    const commission = roundMoney(
+      Number(order.total_price || 0) * (commissionPercent / 100),
+    );
+    const payoutAmount = roundMoney(
+      Number(order.total_price || 0) - commission,
+    );
+    const platformFee = roundMoney(
+      Math.max(
+        Number(order.payment.amount || 0) - Number(order.total_price || 0),
+        0,
+      ),
+    );
+
+    if (payoutAmount <= 0) {
+      return {
+        released: false,
+        reason: 'PAYOUT_AMOUNT_NOT_POSITIVE',
+        order_id: orderId,
+        payout_amount: payoutAmount,
+      };
+    }
+
+    const payout = await prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: order.payment!.id },
+        data: { escrow_status: 'RELEASED' },
+      });
+
+      return tx.chefPayout.create({
+        data: {
+          chef_id: order.chef_id,
+          order_id: order.id,
+          payment_id: order.payment!.id,
+          amount: payoutAmount,
+          platform_fee: platformFee,
+          commission,
+          currency: order.payment!.currency,
+          status: 'RELEASED',
+          release_reason: releaseReason,
+        },
+      });
+    });
+
+    console.log('[Chef Payout] released', {
+      order_id: order.id,
+      chef_id: order.chef_id,
+      payment_id: order.payment.id,
+      payout_id: payout.id,
+      amount: payout.amount,
+      commission: payout.commission,
+      platform_fee: payout.platform_fee,
+      currency: payout.currency,
+      chef_bank_present: Boolean(
+        order.chef.bank_name &&
+        order.chef.bank_account_number &&
+        order.chef.ifsc_code,
+      ),
+    });
+
+    return { released: true, payout };
+  }
+
+  async listChefPayouts(chefId: string) {
+    return prisma.chefPayout.findMany({
+      where: { chef_id: chefId },
+      include: {
+        order: {
+          select: {
+            id: true,
+            status: true,
+            total_price: true,
+            created_at: true,
+          },
+        },
+        payment: {
+          select: {
+            id: true,
+            status: true,
+            escrow_status: true,
+            amount: true,
+            currency: true,
+          },
+        },
+      },
+      orderBy: { released_at: 'desc' },
+    });
+  }
+
+  async handleWebhook(
+    rawBody: Buffer,
+    signature: string | undefined,
+    payload: RazorpayWebhookPayload,
+  ) {
     if (!signature) {
       const error: any = new Error('Missing X-Razorpay-Signature header');
       error.status = 401;
@@ -510,10 +709,15 @@ export class PaymentsService {
 
     const event = payload.event;
     const paymentEntity = payload.payload?.payment?.entity;
-    const razorpayOrderId = paymentEntity?.order_id || payload.payload?.order?.entity?.id;
+    const razorpayOrderId =
+      paymentEntity?.order_id || payload.payload?.order?.entity?.id;
 
     if (!event || !razorpayOrderId) {
-      return { received: true, ignored: true, reason: 'Unsupported Razorpay webhook payload' };
+      return {
+        received: true,
+        ignored: true,
+        reason: 'Unsupported Razorpay webhook payload',
+      };
     }
 
     const payment = await prisma.payment.findFirst({
@@ -535,7 +739,8 @@ export class PaymentsService {
           where: { id: payment.id },
           data: {
             status: PaymentStatus.COMPLETED,
-            razorpay_payment_id: paymentEntity?.id || payment.razorpay_payment_id,
+            razorpay_payment_id:
+              paymentEntity?.id || payment.razorpay_payment_id,
             gateway_id: razorpayOrderId,
             escrow_status: 'HELD',
           },

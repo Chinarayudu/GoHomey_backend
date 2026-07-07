@@ -53,6 +53,14 @@ FAILED
 REFUNDED
 ```
 
+Chef payout statuses:
+
+```text
+RELEASED
+PAID
+FAILED
+```
+
 ## User App Order Flow
 
 ### 1. Create Order From Cart
@@ -472,6 +480,106 @@ batch_proof
 weight_verification_grams
 ```
 
+### 5. Chef Payouts
+
+List payouts released to the logged-in chef:
+
+```http
+GET /payments/chef/payouts
+```
+
+Use this for the chef app earnings/payout history screen.
+
+Response shape:
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "payout-id",
+      "chef_id": "chef-id",
+      "order_id": "order-id",
+      "payment_id": "payment-id",
+      "amount": 250,
+      "platform_fee": 20,
+      "commission": 0,
+      "currency": "INR",
+      "status": "RELEASED",
+      "release_reason": "DELIVERY_DELIVERED",
+      "released_at": "2026-07-07T10:00:00.000Z",
+      "paid_at": null,
+      "order": {
+        "id": "order-id",
+        "status": "DELIVERED",
+        "total_price": 250
+      },
+      "payment": {
+        "status": "COMPLETED",
+        "escrow_status": "RELEASED",
+        "amount": 270,
+        "currency": "INR"
+      }
+    }
+  ]
+}
+```
+
+Current payout behavior:
+
+```text
+Customer payment is marked HELD after successful payment.
+When order/delivery becomes DELIVERED, backend creates a ChefPayout row.
+Backend marks payment.escrow_status = RELEASED.
+This is an internal payout ledger, not an automatic bank transfer yet.
+```
+
+## Admin Manual Chef Payout APIs
+
+List chef payouts pending manual payment:
+
+```http
+GET /admin/payouts/pending
+Authorization: Bearer <admin_jwt>
+```
+
+Use this for the admin payout screen. It returns chef bank details, order details, payment details, count, and total pending amount.
+
+After admin pays the chef manually by UPI/bank transfer/RazorpayX dashboard, mark payout as paid:
+
+```http
+PATCH /admin/payouts/{payout_id}/status
+Authorization: Bearer <admin_jwt>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "status": "PAID"
+}
+```
+
+Allowed payout statuses:
+
+```text
+RELEASED
+PAID
+FAILED
+```
+
+Admin manual payout flow:
+
+```text
+1. Order delivered.
+2. Backend creates ChefPayout with status RELEASED.
+3. Admin calls GET /admin/payouts/pending.
+4. Admin transfers amount manually using chef bank details.
+5. Admin calls PATCH /admin/payouts/{payout_id}/status with PAID.
+6. Backend sets payout.status = PAID and paid_at = current time.
+```
+
 ## Screen-To-API Mapping
 
 User app checkout:
@@ -523,6 +631,19 @@ Chef app Fuel orders:
 GET /fuel/chef/fulfillments
 PATCH /fuel/fulfillments/{fulfillment_id}/status
 POST /fuel/fulfillments/{fulfillment_id}/weigh-in
+```
+
+Chef app earnings:
+
+```text
+GET /payments/chef/payouts
+```
+
+Admin manual payouts:
+
+```text
+GET /admin/payouts/pending
+PATCH /admin/payouts/{payout_id}/status
 ```
 
 ## Delivery / Shadowfax Note

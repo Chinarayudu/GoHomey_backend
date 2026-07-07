@@ -85,6 +85,59 @@ adminRouter.get('/revenue/daily', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /admin/payouts/pending:
+ *   get:
+ *     summary: List chef payouts pending manual payment (Admin only)
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: Pending chef payouts retrieved
+ */
+// GET /api/v1/admin/payouts/pending
+adminRouter.get('/payouts/pending', async (req, res, next) => {
+  try {
+    const result = await adminService.getPendingChefPayouts();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /admin/payouts/{id}/status:
+ *   patch:
+ *     summary: Update chef payout status after manual payment (Admin only)
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [RELEASED, PAID, FAILED]
+ *     responses:
+ *       200:
+ *         description: Payout status updated
+ */
+// PATCH /api/v1/admin/payouts/:id/status
+adminRouter.patch('/payouts/:id/status', async (req, res, next) => {
+  try {
+    const result = await adminService.updateChefPayoutStatus(
+      req.params.id,
+      req.body.status,
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // --- Order Management ---
 
 /**

@@ -1,5 +1,6 @@
 import { prisma } from '../prisma/prisma.service';
 import { DeliveryStatus } from '@prisma/client';
+import { paymentsService } from '../payments/payments.service';
 import {
   ShadowfaxClient,
   normalizeIndianPhone,
@@ -202,6 +203,26 @@ export class DeliveryService {
         where: { id: delivery.order_id },
         data: { status: 'DELIVERED' },
       });
+
+      try {
+        const payoutResult = await paymentsService.releaseChefPayoutForOrder(
+          delivery.order_id,
+          'DELIVERY_DELIVERED',
+        );
+        console.log('[Chef Payout] delivery release result', {
+          delivery_id: delivery.id,
+          order_id: delivery.order_id,
+          released: payoutResult.released,
+          reason: (payoutResult as any).reason,
+          payout_id: (payoutResult as any).payout?.id,
+        });
+      } catch (error) {
+        console.error('[Chef Payout] delivery release failed', {
+          delivery_id: delivery.id,
+          order_id: delivery.order_id,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
     }
 
     return delivery;

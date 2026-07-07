@@ -1,5 +1,6 @@
 import { prisma } from '../prisma/prisma.service';
 import { ordersQueue } from '../common/queues/queues';
+import { paymentsService } from '../payments/payments.service';
 import {
   ChefApplicationStatus,
   FuelSubscriptionStatus,
@@ -615,9 +616,7 @@ export class OrdersService {
           fuel_subscription_start_date:
             itemType === 'FUEL_PLAN' ? fuelSubscriptionStartDate : null,
           fuel_subscription_delivery_time_slot:
-            itemType === 'FUEL_PLAN'
-              ? fuelSubscriptionDeliveryTimeSlot
-              : null,
+            itemType === 'FUEL_PLAN' ? fuelSubscriptionDeliveryTimeSlot : null,
         });
         orderGroups[chefId].totalPrice += price * itemRequest.quantity;
 
@@ -651,8 +650,7 @@ export class OrdersService {
                 pantry_id: item.pantry_id,
                 social_event_id: item.social_event_id,
                 fuel_slot_id: item.fuel_slot_id,
-                fuel_subscription_start_date:
-                  item.fuel_subscription_start_date,
+                fuel_subscription_start_date: item.fuel_subscription_start_date,
                 fuel_subscription_delivery_time_slot:
                   item.fuel_subscription_delivery_time_slot,
               })),
@@ -687,6 +685,26 @@ export class OrdersService {
       where: { id },
       data: { status },
     });
+
+    if (status === 'DELIVERED') {
+      try {
+        const payoutResult = await paymentsService.releaseChefPayoutForOrder(
+          order.id,
+          'ORDER_STATUS_DELIVERED',
+        );
+        console.log('[Chef Payout] order status release result', {
+          order_id: order.id,
+          released: payoutResult.released,
+          reason: (payoutResult as any).reason,
+          payout_id: (payoutResult as any).payout?.id,
+        });
+      } catch (error) {
+        console.error('[Chef Payout] order status release failed', {
+          order_id: order.id,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
+    }
 
     // Notify user of status update
     await ordersQueue.add('send-order-status-update', {

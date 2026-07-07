@@ -1,4 +1,5 @@
 import { prisma } from '../prisma/prisma.service';
+import { paymentsService } from '../payments/payments.service';
 
 export class AdminService {
   async getPlatformStats() {
@@ -82,6 +83,152 @@ export class AdminService {
     return revenuePerDay;
   }
 
+  async getPendingChefPayouts() {
+    const payouts = await prisma.chefPayout.findMany({
+      where: { status: 'RELEASED' },
+      include: {
+        chef: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            bank_name: true,
+            bank_account_number: true,
+            ifsc_code: true,
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            status: true,
+            order_type: true,
+            total_price: true,
+            created_at: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+              },
+            },
+          },
+        },
+        payment: {
+          select: {
+            id: true,
+            status: true,
+            escrow_status: true,
+            amount: true,
+            currency: true,
+            razorpay_order_id: true,
+            razorpay_payment_id: true,
+          },
+        },
+      },
+      orderBy: { released_at: 'desc' },
+    });
+
+    const totalAmount = payouts.reduce(
+      (sum, payout) => sum + Number(payout.amount || 0),
+      0,
+    );
+
+    return {
+      status: 'success',
+      summary: {
+        count: payouts.length,
+        total_amount: Math.round(totalAmount * 100) / 100,
+        currency: payouts[0]?.currency || 'INR',
+      },
+      data: payouts.map((payout) => ({
+        id: payout.id,
+        status: payout.status,
+        amount: payout.amount,
+        currency: payout.currency,
+        commission: payout.commission,
+        platform_fee: payout.platform_fee,
+        release_reason: payout.release_reason,
+        released_at: payout.released_at,
+        paid_at: payout.paid_at,
+        chef: {
+          id: payout.chef.id,
+          name: payout.chef.name,
+          phone: payout.chef.phone,
+          email: payout.chef.email,
+          bank_name: payout.chef.bank_name,
+          bank_account_number: payout.chef.bank_account_number,
+          ifsc_code: payout.chef.ifsc_code,
+          bank_details_available: Boolean(
+            payout.chef.bank_name &&
+            payout.chef.bank_account_number &&
+            payout.chef.ifsc_code,
+          ),
+        },
+        order: payout.order,
+        payment: payout.payment,
+      })),
+    };
+  }
+
+  async updateChefPayoutStatus(
+    payoutId: string,
+    status: 'RELEASED' | 'PAID' | 'FAILED',
+  ) {
+    if (!['RELEASED', 'PAID', 'FAILED'].includes(status)) {
+      const error: any = new Error('Invalid payout status');
+      error.status = 400;
+      throw error;
+    }
+
+    const payout = await prisma.chefPayout.findUnique({
+      where: { id: payoutId },
+    });
+
+    if (!payout) {
+      const error: any = new Error('Chef payout not found');
+      error.status = 404;
+      throw error;
+    }
+
+    return prisma.chefPayout.update({
+      where: { id: payoutId },
+      data: {
+        status,
+        paid_at: status === 'PAID' ? new Date() : null,
+      },
+      include: {
+        chef: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            bank_name: true,
+            bank_account_number: true,
+            ifsc_code: true,
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            status: true,
+            total_price: true,
+          },
+        },
+        payment: {
+          select: {
+            id: true,
+            status: true,
+            escrow_status: true,
+            amount: true,
+            currency: true,
+          },
+        },
+      },
+    });
+  }
+
   // --- Order Management ---
 
   async getAllOrders(
@@ -145,7 +292,7 @@ export class AdminService {
           },
         },
         payment: true,
-      delivery: {
+        delivery: {
           include: {
             partner: true,
           },
@@ -155,10 +302,32 @@ export class AdminService {
   }
 
   async updateOrderStatus(orderId: string, status: any) {
-    return prisma.order.update({
+    const order = await prisma.order.update({
       where: { id: orderId },
       data: { status },
     });
+
+    if (status === 'DELIVERED') {
+      try {
+        const payoutResult = await paymentsService.releaseChefPayoutForOrder(
+          order.id,
+          'ADMIN_ORDER_STATUS_DELIVERED',
+        );
+        console.log('[Chef Payout] admin status release result', {
+          order_id: order.id,
+          released: payoutResult.released,
+          reason: (payoutResult as any).reason,
+          payout_id: (payoutResult as any).payout?.id,
+        });
+      } catch (error) {
+        console.error('[Chef Payout] admin status release failed', {
+          order_id: order.id,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
+    }
+
+    return order;
   }
 
   // --- Chef Management ---
