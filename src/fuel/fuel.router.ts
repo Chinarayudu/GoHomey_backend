@@ -208,6 +208,19 @@ fuelRouter.get('/subscriptions/me', jwtAuth, async (req, res, next) => {
   }
 });
 
+// GET /api/v1/fuel/deliveries/me?date=YYYY-MM-DD
+fuelRouter.get('/deliveries/me', jwtAuth, async (req, res, next) => {
+  try {
+    const result = await fuelService.listMyFulfillments(
+      (req.user as any).id,
+      req.query.date as string | undefined,
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/v1/fuel/subscriptions/:id/pause
 fuelRouter.post(
   '/subscriptions/:id/pause',

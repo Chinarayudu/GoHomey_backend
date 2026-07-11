@@ -84,8 +84,18 @@ export class AdminService {
   }
 
   async getPendingChefPayouts() {
+    return this.getChefPayouts('RELEASED');
+  }
+
+  async getChefPayouts(statusFilter?: string) {
+    if (statusFilter && !['RELEASED', 'PAID', 'FAILED'].includes(statusFilter)) {
+      const error: any = new Error('Invalid payout status');
+      error.status = 400;
+      throw error;
+    }
+
     const payouts = await prisma.chefPayout.findMany({
-      where: { status: 'RELEASED' },
+      where: statusFilter ? { status: statusFilter } : {},
       include: {
         chef: {
           select: {

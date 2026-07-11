@@ -107,6 +107,35 @@ adminRouter.get('/payouts/pending', async (req, res, next) => {
 
 /**
  * @openapi
+ * /admin/payouts:
+ *   get:
+ *     summary: List chef payouts, optionally filtered by status (Admin only)
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [RELEASED, PAID, FAILED]
+ *         description: Filter payouts by status. Omit to return all payouts.
+ *     responses:
+ *       200:
+ *         description: Chef payouts retrieved
+ */
+// GET /api/v1/admin/payouts?status=RELEASED|PAID|FAILED
+adminRouter.get('/payouts', async (req, res, next) => {
+  try {
+    const status = req.query.status as string | undefined;
+    const result = await adminService.getChefPayouts(status);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
  * /admin/payouts/{id}/status:
  *   patch:
  *     summary: Update chef payout status after manual payment (Admin only)

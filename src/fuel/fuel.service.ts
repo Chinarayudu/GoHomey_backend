@@ -115,6 +115,86 @@ function serializeFuelSubscription(subscription: any) {
   };
 }
 
+// Given a plan's menu (breakfast/lunch/dinner keyed by period), find the meal
+// whose configured time_slot matches the subscription's delivery time slot.
+function resolveMealPeriodBySlot(meals: any, timeSlot: string) {
+  if (!meals || typeof meals !== 'object') return { period: null, meal: null };
+  for (const [period, meal] of Object.entries<any>(meals)) {
+    if (meal && String(meal.time_slot) === String(timeSlot)) {
+      return { period, meal };
+    }
+  }
+  return { period: null, meal: null };
+}
+
+// Resolve which dish is due on `targetDate` for a subscription, by mapping the
+// calendar date to a day in the plan's menu_json.days[] array.
+// menu_json shape (written by the admin portal):
+//   { days: [ { day: 1, meals: { breakfast: { name, time_slot }, lunch: {...}, dinner: {...} } }, ... ] }
+// The menu loops (day index % duration_days) so it is safe past the last day.
+function resolveDailyMenu(
+  plan: any,
+  startDate: Date | string,
+  targetDate: Date | string,
+  timeSlot: string,
+) {
+  if (!plan || !plan.menu_json) return null;
+  const days = Array.isArray(plan.menu_json?.days) ? plan.menu_json.days : [];
+  if (!days.length) return null;
+
+  const start = startOfDay(new Date(startDate));
+  const target = startOfDay(new Date(targetDate));
+  const diff = Math.floor((target.getTime() - start.getTime()) / 86400000);
+  if (diff < 0) return null;
+
+  const duration = Number(plan.duration_days) || days.length;
+  const index = duration > 0 ? diff % duration : diff;
+
+  const dayEntry =
+    days[index] || days.find((d: any) => Number(d.day) === index + 1) || null;
+  if (!dayEntry) return null;
+
+  const meals = dayEntry.meals || {};
+  const { period, meal } = resolveMealPeriodBySlot(meals, timeSlot);
+
+  return {
+    day_number: Number(dayEntry.day) || index + 1,
+    period,
+    item_name: meal?.name || null,
+    time_slot: meal?.time_slot || timeSlot,
+    meals,
+    nutrition: {
+      calories: plan.calories ?? null,
+      protein: plan.protein ?? null,
+      carbs: plan.carbs ?? null,
+      fat: plan.fat ?? null,
+    },
+  };
+}
+
+// Attach the resolved daily dish (`menu`) to a fulfillment row that was loaded
+// with its subscription + plan included.
+function serializeFuelFulfillment(fulfillment: any) {
+  if (!fulfillment) return fulfillment;
+  const subscription = fulfillment.subscription;
+  const menu = subscription
+    ? resolveDailyMenu(
+        subscription.plan,
+        subscription.start_date,
+        fulfillment.fulfillment_date,
+        fulfillment.delivery_time_slot,
+      )
+    : null;
+
+  return {
+    ...fulfillment,
+    menu,
+    ...(subscription
+      ? { subscription: serializeFuelSubscription(subscription) }
+      : {}),
+  };
+}
+
 export class FuelService {
   async createPlan(data: any) {
     const price = Number(data.price ?? data.price_to_customer);
@@ -605,7 +685,7 @@ export class FuelService {
 
   async listChefFulfillments(chefId: string, date?: string) {
     const targetDate = date ? parseDate(date, 'date') : undefined;
-    return prisma.fuelDailyFulfillment.findMany({
+    const fulfillments = await prisma.fuelDailyFulfillment.findMany({
       where: {
         chef_id: chefId,
         ...(targetDate ? { fulfillment_date: targetDate } : {}),
@@ -620,6 +700,37 @@ export class FuelService {
       },
       orderBy: [{ fulfillment_date: 'asc' }, { delivery_time_slot: 'asc' }],
     });
+
+    return fulfillments.map(serializeFuelFulfillment);
+  }
+
+  // User app: the logged-in user's Fuel deliveries for a given day (default today).
+  async listMyFulfillments(userId: string, date?: string) {
+    const targetDate = date ? parseDate(date, 'date') : startOfDay(new Date());
+    const fulfillments = await prisma.fuelDailyFulfillment.findMany({
+      where: {
+        fulfillment_date: targetDate,
+        subscription: { user_id: userId },
+      },
+      include: {
+        subscription: {
+          include: {
+            plan: true,
+            assigned_chef: {
+              select: {
+                id: true,
+                name: true,
+                kitchen_name: true,
+                phone: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ delivery_time_slot: 'asc' }],
+    });
+
+    return fulfillments.map(serializeFuelFulfillment);
   }
 
   async updateFulfillmentStatus(
