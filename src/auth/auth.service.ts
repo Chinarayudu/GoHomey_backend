@@ -65,7 +65,25 @@ export class AuthService {
     }
   }
 
+  // Fixed credentials for Google Play / App Store reviewers, who cannot receive
+  // a real-time SMS OTP. Enabled only when both env vars are set. Does not affect
+  // real users — a normal phone never matches REVIEW_TEST_PHONE.
+  private readonly reviewPhone = process.env.REVIEW_TEST_PHONE?.trim();
+  private readonly reviewOtp = process.env.REVIEW_TEST_OTP?.trim();
+
+  private isReviewPhone(phone: string): boolean {
+    return !!this.reviewPhone && phone.trim() === this.reviewPhone;
+  }
+
   async sendOtp(phone: string) {
+    // Reviewer test number: skip Twilio entirely (no real SMS, no cost) and
+    // store the fixed OTP so the app's normal verify step still works.
+    if (this.isReviewPhone(phone) && this.reviewOtp) {
+      await redisClient.setex(`OTP:${phone}`, 300, this.reviewOtp);
+      console.log('[Review OTP] Fixed code stored for test phone', phone);
+      return { message: 'OTP sent successfully' };
+    }
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
@@ -124,6 +142,12 @@ export class AuthService {
   }
 
   async verifyOtp(phone: string, otp: string) {
+    // Reviewer test number: accept the fixed OTP directly, independent of Redis.
+    if (this.isReviewPhone(phone) && this.reviewOtp && otp.trim() === this.reviewOtp) {
+      await redisClient.del(`OTP:${phone}`).catch(() => {});
+      return this.resolveIdentity(phone);
+    }
+
     const storedOtp = await redisClient.get(`OTP:${phone}`);
 
     if (!storedOtp || storedOtp !== otp) {
@@ -135,6 +159,10 @@ export class AuthService {
     // Clear OTP after successful validation
     await redisClient.del(`OTP:${phone}`);
 
+    return this.resolveIdentity(phone);
+  }
+
+  private async resolveIdentity(phone: string) {
     // 1. Check User table with linked Chef profile
     let person: any = await prisma.user.findUnique({
       where: { phone },
