@@ -1,7 +1,7 @@
 services:
   - type: web
     name: gohomeyy-backend
-    env: node
+    runtime: node
     plan: free
     region: ohio # or oregon, frankfurt, etc.
     buildCommand: npm install --include=dev && npx prisma db push --accept-data-loss && npx prisma generate && npm run build
@@ -31,6 +31,12 @@ services:
         sync: false
       - key: TWILIO_PHONE_NUMBER
         sync: false
+      # Fixed login for Google Play / App Store reviewers (skips Twilio).
+      # Give these same values to Google in Play Console → App content → App access.
+      - key: REVIEW_TEST_PHONE
+        value: '+911234567890'
+      - key: REVIEW_TEST_OTP
+        value: '123456'
       - key: SHADOWFAX_API_TOKEN
         sync: false
       - key: SHADOWFAX_CREDITS_KEY
