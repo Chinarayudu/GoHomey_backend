@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../prisma/prisma.service';
 import { jwtAuth } from '../common/middleware/auth.middleware';
+import { calculateDistance } from '../common/utils/location';
+import { isServiceWindowOpen } from '../common/utils/time';
 
 const feedRouter = Router();
 
@@ -41,9 +43,13 @@ feedRouter.get('/', jwtAuth, async (req, res, next) => {
     }
 
     // 2. Fetch recent meals and social events with chef location
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const now = new Date();
+
     const [meals, socialEvents] = await Promise.all([
       prisma.dailyMeal.findMany({
-        where: { chef_id: { in: chefIds } },
+        where: { chef_id: { in: chefIds }, date: { gte: startOfToday } },
         include: {
           chef: {
             select: {
@@ -58,7 +64,7 @@ feedRouter.get('/', jwtAuth, async (req, res, next) => {
         take: 20,
       }),
       prisma.socialEvent.findMany({
-        where: { chef_id: { in: chefIds } },
+        where: { chef_id: { in: chefIds }, end_date: { gte: now } },
         include: {
           chef: {
             select: {
@@ -74,19 +80,19 @@ feedRouter.get('/', jwtAuth, async (req, res, next) => {
       }),
     ]);
 
-    // 3. Filter by radius if coords provided
-    let filteredMeals = meals;
+    // 3. Drop meals whose service window has already closed for today
+    let filteredMeals = meals.filter(isServiceWindowOpen);
     let filteredSocialEvents = socialEvents;
 
+    // 4. Filter by radius if coords provided
     if (userLat !== undefined && userLon !== undefined) {
-      const { calculateDistance } = await import('../common/utils/location');
-      filteredMeals = meals.filter((m) => {
+      filteredMeals = filteredMeals.filter((m) => {
         if (m.chef.latitude && m.chef.longitude) {
           return calculateDistance(userLat, userLon, m.chef.latitude, m.chef.longitude) <= 3;
         }
         return false;
       });
-      filteredSocialEvents = socialEvents.filter((s) => {
+      filteredSocialEvents = filteredSocialEvents.filter((s) => {
         if (s.chef.latitude && s.chef.longitude) {
           return calculateDistance(userLat, userLon, s.chef.latitude, s.chef.longitude) <= 3;
         }
@@ -94,7 +100,7 @@ feedRouter.get('/', jwtAuth, async (req, res, next) => {
       });
     }
 
-    // 4. Combine and sort
+    // 5. Combine and sort
     const feed = [
       ...filteredMeals.map((m) => ({ ...m, feed_type: 'DAILY_MEAL' })),
       ...filteredSocialEvents.map((s) => ({ ...s, feed_type: 'SOCIAL_EVENT' })),

@@ -128,9 +128,9 @@ export class SocialService {
     };
   }
 
-  async findAll(query: { chefId?: string }) {
-    const { chefId } = query;
-    const where: any = {};
+  async findAll(query: { chefId?: string; latitude?: number; longitude?: number }) {
+    const { chefId, latitude, longitude } = query;
+    const where: any = { end_date: { gte: new Date() } };
     if (chefId) where.chef_id = chefId;
 
     const events = await prisma.socialEvent.findMany({
@@ -145,6 +145,15 @@ export class SocialService {
         },
       },
     });
+
+    if (latitude !== undefined && longitude !== undefined) {
+      return events.filter((event) => {
+        if (event.chef.latitude && event.chef.longitude) {
+          return calculateDistance(latitude, longitude, event.chef.latitude, event.chef.longitude) <= 3;
+        }
+        return false;
+      });
+    }
 
     return events;
   }

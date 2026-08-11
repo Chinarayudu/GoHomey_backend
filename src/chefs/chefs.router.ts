@@ -434,11 +434,11 @@ chefsRouter.patch(
  *       - in: query
  *         name: lat
  *         schema: { type: number }
- *         description: Temporarily ignored. 3km radius filtering will be restored later.
+ *         description: User latitude for 3km radius filtering
  *       - in: query
  *         name: lng
  *         schema: { type: number }
- *         description: Temporarily ignored. 3km radius filtering will be restored later.
+ *         description: User longitude for 3km radius filtering
  *     responses:
  *       200:
  *         description: Successfully retrieved approved chefs
@@ -446,13 +446,12 @@ chefsRouter.patch(
 // GET /api/v1/chefs
 chefsRouter.get('/', optionalJwtAuth, async (req, res, next) => {
   try {
-    // TODO: Restore user-to-chef 3km filtering after the delivery/serviceability flow is finalized.
-    // const { lat, lng } = req.query as any;
-    // const user = req.user as any;
-    // const latitude = lat ? parseFloat(lat as string) : user?.latitude;
-    // const longitude = lng ? parseFloat(lng as string) : user?.longitude;
-    // const coords = latitude && longitude ? { latitude, longitude } : undefined;
-    const result = await chefsService.findAll();
+    const { lat, lng } = req.query as any;
+    const user = req.user as any;
+    const latitude = lat ? parseFloat(lat as string) : user?.latitude;
+    const longitude = lng ? parseFloat(lng as string) : user?.longitude;
+    const coords = latitude && longitude ? { latitude, longitude } : undefined;
+    const result = await chefsService.findAll(coords);
     res.json(result);
   } catch (error) {
     next(error);

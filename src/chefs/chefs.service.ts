@@ -2,6 +2,7 @@ import { prisma } from '../prisma/prisma.service';
 import { Chef, Prisma, Role, ChefApplicationStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { isServiceWindowOpen } from '../common/utils/time';
+import { calculateDistance } from '../common/utils/location';
 
 const publicChefSelect = {
   id: true,
@@ -324,7 +325,7 @@ export class ChefsService {
   }
 
   async findAll(
-    _coords?: { latitude: number; longitude: number },
+    coords?: { latitude: number; longitude: number },
     options: { includeAll?: boolean } = {},
   ) {
     const chefs = await prisma.chef.findMany({
@@ -337,24 +338,23 @@ export class ChefsService {
       orderBy: { created_at: 'desc' },
     });
 
-    // TODO: Restore user-to-chef 3km filtering after delivery/serviceability rules are finalized.
-    // if (!coords) return chefs;
-    // return chefs
-    //   .map((chef) => {
-    //     if (chef.latitude && chef.longitude) {
-    //       const distance = calculateDistance(
-    //         coords.latitude,
-    //         coords.longitude,
-    //         chef.latitude,
-    //         chef.longitude
-    //       );
-    //       return { ...chef, distance: parseFloat(distance.toFixed(2)) };
-    //     }
-    //     return { ...chef, distance: Infinity };
-    //   })
-    //   .filter((chef) => chef.distance <= 3)
-    //   .sort((a: any, b: any) => a.distance - b.distance);
-    return chefs;
+    if (!coords) return chefs;
+
+    return chefs
+      .map((chef) => {
+        if (chef.latitude && chef.longitude) {
+          const distance = calculateDistance(
+            coords.latitude,
+            coords.longitude,
+            chef.latitude,
+            chef.longitude
+          );
+          return { ...chef, distance: parseFloat(distance.toFixed(2)) };
+        }
+        return { ...chef, distance: Infinity };
+      })
+      .filter((chef) => chef.distance <= 3)
+      .sort((a: any, b: any) => a.distance - b.distance);
   }
 
   async getCatalog(chefId: string) {
