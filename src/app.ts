@@ -58,10 +58,13 @@ function makePublicUploadUrls(data: any, baseUrl: string): any {
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
+// Auth is Bearer-token based (no cookies), so credentials/origin-echo is not needed.
+// Set CORS_ORIGIN to a comma-separated allowlist (e.g. "https://app.example.com,https://admin.example.com")
+// to restrict origins in production; defaults to allowing all origins.
+const corsOrigins = process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()).filter(Boolean);
 app.use(cors({
-  origin: '*', // Allow all origins for development
+  origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : '*',
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  credentials: true,
 }));
 
 // Monitoring and Parsing

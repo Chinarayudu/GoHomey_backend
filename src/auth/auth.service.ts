@@ -5,9 +5,10 @@ import { Role } from '@prisma/client';
 import { redisClient } from '../common/redis/redis.client';
 import { chefsService } from '../chefs/chefs.service';
 import { prisma } from '../prisma/prisma.service';
+import { JWT_SECRET } from '../config/env';
 
 export class AuthService {
-  private readonly jwtSecret = process.env.JWT_SECRET || 'super-secret-key';
+  private readonly jwtSecret = JWT_SECRET;
 
   async validateUser(email: string, pass: string): Promise<any> {
     const user = await usersService.findOne({ email });

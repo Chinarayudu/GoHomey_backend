@@ -15,6 +15,7 @@ import { batchProofUpload } from '../common/middleware/upload.middleware';
 import { cloudinaryService } from '../common/services/cloudinary.service';
 import { fuelLiveService } from './fuel-live.service';
 import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../config/env';
 
 const fuelRouter = Router();
 
@@ -44,10 +45,7 @@ async function resolveChefFromStreamToken(req: Request) {
     throw error;
   }
 
-  const payload = jwt.verify(
-    token,
-    process.env.JWT_SECRET || 'super-secret-key',
-  ) as any;
+  const payload = jwt.verify(token, JWT_SECRET) as any;
   if (payload.role !== Role.CHEF && payload.role !== Role.ADMIN) {
     const error: any = new Error('Chef role is required');
     error.status = 403;

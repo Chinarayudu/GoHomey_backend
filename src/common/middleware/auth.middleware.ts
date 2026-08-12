@@ -2,11 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import passport from 'passport';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
 import { Role } from '@prisma/client';
+import { JWT_SECRET } from '../../config/env';
 
 // Configure Passport with JWT Strategy for Express
 const options = {
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: process.env.JWT_SECRET || 'super-secret-key',
+  secretOrKey: JWT_SECRET,
 };
 
 passport.use(
