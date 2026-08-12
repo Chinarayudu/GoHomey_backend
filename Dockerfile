@@ -3,9 +3,10 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 # build-essential/python3 are needed to compile bcrypt's native binding if no
-# prebuilt binary matches this image's platform.
+# prebuilt binary matches this image's platform. openssl is required by
+# Prisma's query engine to detect the correct libssl version.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 build-essential \
+    python3 build-essential openssl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
@@ -26,9 +27,15 @@ FROM node:22-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+# prisma.config.ts (not schema.prisma) is where datasource.url is defined in
+# Prisma 7 — needed at runtime for `prisma migrate deploy` to resolve DATABASE_URL.
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY package*.json ./
 
 EXPOSE 3000
