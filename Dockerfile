@@ -13,6 +13,11 @@ COPY prisma ./prisma
 RUN npm ci
 
 COPY . .
+# prisma.config.ts requires DATABASE_URL to resolve just to load the config,
+# even for `generate` (which doesn't actually connect to the DB). Real secrets
+# are intentionally excluded from the build context (see .dockerignore) and
+# are supplied at container runtime instead, so a placeholder is enough here.
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 RUN npx prisma generate
 RUN npm run build
 
