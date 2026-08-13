@@ -6,6 +6,7 @@ import { redisClient } from '../common/redis/redis.client';
 import { chefsService } from '../chefs/chefs.service';
 import { prisma } from '../prisma/prisma.service';
 import { JWT_SECRET } from '../config/env';
+import { verifyFirebasePhoneToken } from '../common/services/firebase.service';
 
 export class AuthService {
   private readonly jwtSecret = JWT_SECRET;
@@ -77,7 +78,7 @@ export class AuthService {
   }
 
   async sendOtp(phone: string) {
-    // Reviewer test number: skip Twilio entirely (no real SMS, no cost) and
+    // Reviewer test number: skip the SMS provider entirely (no real SMS, no cost) and
     // store the fixed OTP so the app's normal verify step still works.
     if (this.isReviewPhone(phone) && this.reviewOtp) {
       await redisClient.setex(`OTP:${phone}`, 300, this.reviewOtp);
@@ -87,56 +88,56 @@ export class AuthService {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
-    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
-    const fromPhone = process.env.TWILIO_PHONE_NUMBER?.trim();
+    const msg91AuthKey = process.env.MSG91_AUTH_KEY?.trim();
+    const msg91TemplateId = process.env.MSG91_TEMPLATE_ID?.trim();
 
-    if (accountSid && authToken && fromPhone) {
-      const message = `Your GoHomeyy verification code is ${otp}. Valid for 5 min.`;
-      const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-      const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    if (msg91AuthKey && msg91TemplateId) {
+      // MSG91 expects digits only, no leading '+' (e.g. 918688261165).
+      const mobile = phone.replace(/^\+/, '');
 
       try {
-        const response = await fetch(url, {
+        const response = await fetch('https://control.msg91.com/api/v5/flow/', {
           method: 'POST',
           headers: {
-            'Authorization': `Basic ${basicAuth}`,
-            'Content-Type': 'application/x-www-form-urlencoded'
+            authkey: msg91AuthKey,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
           },
-          body: new URLSearchParams({
-            To: phone,      // Twilio requires country code (e.g., +918688261165)
-            From: fromPhone,
-            Body: message
-          })
+          body: JSON.stringify({
+            template_id: msg91TemplateId,
+            short_url: '0',
+            recipients: [
+              {
+                mobiles: mobile,
+                // Variable name must match what's registered in the MSG91/DLT template.
+                OTP: otp,
+              },
+            ],
+          }),
         });
         const data = await response.json();
 
-        if (!response.ok) {
-          console.error('[Twilio Error Response]:', data);
-          const err: any = new Error(
-            data?.message === 'Authenticate'
-              ? 'Twilio authentication failed. Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN.'
-              : data?.message || 'Twilio failed to send OTP',
-          );
+        if (!response.ok || data?.type === 'error') {
+          console.error('[MSG91 Error Response]:', data);
+          const err: any = new Error(data?.message || 'MSG91 failed to send OTP');
           err.status = 502;
           err.details = data;
           throw err;
         }
 
-        console.log('[Twilio OTP Sent]:', {
-          sid: data?.sid,
-          status: data?.status,
+        console.log('[MSG91 OTP Sent]:', {
+          request_id: data?.request_id,
           to: phone,
         });
       } catch (err) {
-        console.error('[Twilio Error]:', err);
+        console.error('[MSG91 Error]:', err);
         throw err;
       }
     } else {
       console.log(`[Mock SMS] Sending OTP ${otp} to phone ${phone}`);
     }
 
-    // Store OTP only after Twilio accepts the SMS request, or immediately in mock mode.
+    // Store OTP only after MSG91 accepts the SMS request, or immediately in mock mode.
     await redisClient.setex(`OTP:${phone}`, 300, otp);
 
     return { message: 'OTP sent successfully' };
@@ -160,6 +161,14 @@ export class AuthService {
     // Clear OTP after successful validation
     await redisClient.del(`OTP:${phone}`);
 
+    return this.resolveIdentity(phone);
+  }
+
+  // Client (web/mobile) completes Firebase Phone Auth and sends us the resulting
+  // ID token. We verify it server-side and trust the phone number Firebase
+  // vouches for — no OTP generation/storage/SMS sending on our side at all.
+  async verifyFirebaseToken(idToken: string) {
+    const phone = await verifyFirebasePhoneToken(idToken);
     return this.resolveIdentity(phone);
   }
 

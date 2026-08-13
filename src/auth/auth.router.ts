@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authService } from './auth.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
-import { RegisterDto, LoginDto, SendOtpDto, VerifyOtpDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, SendOtpDto, VerifyOtpDto, VerifyFirebaseTokenDto } from './dto/auth.dto';
 import { jwtAuth } from '../common/middleware/auth.middleware';
 
 const authRouter = Router();
@@ -218,6 +218,43 @@ authRouter.post(
   async (req, res, next) => {
     try {
       const result = await authService.verifyOtp(req.body.phone, req.body.otp);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /auth/verify-firebase-token:
+ *   post:
+ *     summary: Verify a Firebase Phone Auth ID token and log in/register by phone
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - idToken
+ *             properties:
+ *               idToken:
+ *                 type: string
+ *                 description: The ID token returned by the Firebase client SDK after phone verification
+ *     responses:
+ *       200:
+ *         description: Responds with JWT and user/chef status, same shape as /verify-otp
+ *       400:
+ *         description: Invalid or expired ID token
+ */
+authRouter.post(
+  '/verify-firebase-token',
+  validationMiddleware(VerifyFirebaseTokenDto),
+  async (req, res, next) => {
+    try {
+      const result = await authService.verifyFirebaseToken(req.body.idToken);
       res.json(result);
     } catch (error) {
       next(error);
