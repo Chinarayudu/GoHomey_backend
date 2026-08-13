@@ -77,7 +77,18 @@ export class AuthService {
     return !!this.reviewPhone && phone.trim() === this.reviewPhone;
   }
 
+  // TEMPORARY: while waiting on DLT approval, set OTP_BYPASS_ENABLED=true to skip
+  // real SMS sending/verification entirely. sendOtp becomes a no-op success and
+  // verifyOtp accepts any OTP value. Set back to false (or unset) once DLT is approved
+  // — this is a full phone-verification bypass, must not stay on for real users.
+  private readonly otpBypassEnabled = process.env.OTP_BYPASS_ENABLED === 'true';
+
   async sendOtp(phone: string) {
+    if (this.otpBypassEnabled) {
+      console.warn('[OTP BYPASS] OTP_BYPASS_ENABLED=true — skipping real SMS send for', phone);
+      return { message: 'OTP sent successfully' };
+    }
+
     // Reviewer test number: skip the SMS provider entirely (no real SMS, no cost) and
     // store the fixed OTP so the app's normal verify step still works.
     if (this.isReviewPhone(phone) && this.reviewOtp) {
@@ -144,6 +155,11 @@ export class AuthService {
   }
 
   async verifyOtp(phone: string, otp: string) {
+    if (this.otpBypassEnabled) {
+      console.warn('[OTP BYPASS] OTP_BYPASS_ENABLED=true — accepting any OTP for', phone);
+      return this.resolveIdentity(phone);
+    }
+
     // Reviewer test number: accept the fixed OTP directly, independent of Redis.
     if (this.isReviewPhone(phone) && this.reviewOtp && otp.trim() === this.reviewOtp) {
       await redisClient.del(`OTP:${phone}`).catch(() => {});
