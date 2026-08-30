@@ -204,8 +204,12 @@ export class UsersService {
     data: Prisma.UserUpdateInput;
   }): Promise<any> {
     const { where, data } = params;
+    const updateData = { ...data };
+    if (typeof updateData.password === 'string' && updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    }
     return prisma.user.update({
-      data,
+      data: updateData,
       where,
       select: safeUserSelect,
     });
@@ -266,16 +270,30 @@ export class UsersService {
       });
     }
 
-    return prisma.address.update({
-      where: { id: addressId, user_id: userId },
-      data,
-    });
+    try {
+      return await prisma.address.update({
+        where: { id: addressId, user_id: userId },
+        data,
+      });
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw createHttpError('Address not found', 404);
+      }
+      throw error;
+    }
   }
 
   async removeAddress(addressId: string, userId: string) {
-    return prisma.address.delete({
-      where: { id: addressId, user_id: userId },
-    });
+    try {
+      return await prisma.address.delete({
+        where: { id: addressId, user_id: userId },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw createHttpError('Address not found', 404);
+      }
+      throw error;
+    }
   }
 
   async updateLocation(userId: string, latitude: number, longitude: number) {

@@ -3,6 +3,7 @@ import { deliveryService } from './delivery.service';
 import { DeliveryStatus } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 import crypto from 'crypto';
+import { webhookRateLimiter } from '../common/middleware/rateLimit.middleware';
 
 const webhooksRouter = Router();
 
@@ -37,6 +38,28 @@ function mapShadowfaxStatus(status: string): DeliveryStatus | null {
     default:
       return null;
   }
+}
+
+/**
+ * Shadowfax's callback has no signature scheme of its own, so this is a
+ * shared-secret header check we control on both ends. Opt-in via env var
+ * presence (same pattern as the Borzo webhook below) so existing sandbox
+ * testing keeps working until SHADOWFAX_WEBHOOK_SECRET is actually configured
+ * — which also requires setting the same header value in Shadowfax's own
+ * webhook/dashboard settings, not just here.
+ */
+function verifyShadowfaxWebhookSecret(req: any): boolean {
+  const secret = process.env.SHADOWFAX_WEBHOOK_SECRET;
+  if (!secret) return true;
+
+  const provided = req.headers['x-shadowfax-webhook-secret'];
+  if (typeof provided !== 'string' || !provided) return false;
+
+  const providedBuf = Buffer.from(provided);
+  const secretBuf = Buffer.from(secret);
+  if (providedBuf.length !== secretBuf.length) return false;
+
+  return crypto.timingSafeEqual(providedBuf, secretBuf);
 }
 
 function firstString(...values: unknown[]): string | undefined {
@@ -173,6 +196,11 @@ async function processShadowfaxWebhook(
 }
 
 function handleShadowfaxWebhook(req: any, res: any) {
+  if (!verifyShadowfaxWebhookSecret(req)) {
+    console.error('[Shadowfax Webhook] secret verification failed!');
+    return res.status(401).json({ error: 'Invalid or missing webhook secret' });
+  }
+
   const { coid, status, trackingUrl } = extractShadowfaxCallback(req.body);
 
   if (!coid) {
@@ -201,8 +229,8 @@ function handleShadowfaxWebhook(req: any, res: any) {
 }
 
 // POST or PUT /api/v1/webhooks/shadowfax
-webhooksRouter.post('/shadowfax', handleShadowfaxWebhook);
-webhooksRouter.put('/shadowfax', handleShadowfaxWebhook);
+webhooksRouter.post('/shadowfax', webhookRateLimiter, handleShadowfaxWebhook);
+webhooksRouter.put('/shadowfax', webhookRateLimiter, handleShadowfaxWebhook);
 
 /**
  * @openapi
@@ -212,7 +240,7 @@ webhooksRouter.put('/shadowfax', handleShadowfaxWebhook);
  *     tags: [Webhooks]
  */
 // POST /api/v1/webhooks/borzo
-webhooksRouter.post('/borzo', async (req, res) => {
+webhooksRouter.post('/borzo', webhookRateLimiter, async (req, res) => {
   try {
     const signature = req.headers['x-dv-signature'] as string;
     const secret = process.env.BORZO_WEBHOOK_SECRET;

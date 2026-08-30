@@ -3,6 +3,7 @@ import { paymentsService } from './payments.service';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
+import { webhookRateLimiter } from '../common/middleware/rateLimit.middleware';
 
 const paymentsRouter = Router();
 
@@ -137,7 +138,7 @@ paymentsRouter.get(
  *     tags: [Payments]
  */
 // POST /api/v1/payments/webhook/razorpay
-paymentsRouter.post('/webhook/razorpay', async (req, res, next) => {
+paymentsRouter.post('/webhook/razorpay', webhookRateLimiter, async (req, res, next) => {
   try {
     const signature = req.headers['x-razorpay-signature'] as string | undefined;
     const rawBody = (req as any).rawBody as Buffer | undefined;

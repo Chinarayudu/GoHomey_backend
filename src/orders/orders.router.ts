@@ -342,9 +342,25 @@ ordersRouter.patch(
   validationMiddleware(UpdateOrderStatusDto),
   async (req, res, next) => {
     try {
+      const user = req.user as any;
+      let requestingChefId: string | undefined;
+
+      if (user.role === Role.CHEF) {
+        const chef = await prisma.chef.findFirst({
+          where: { OR: [{ id: user.id }, { user_id: user.id }] },
+        });
+        if (!chef) {
+          return res
+            .status(403)
+            .json({ status: 'error', message: 'Chef profile not found' });
+        }
+        requestingChefId = chef.id;
+      }
+
       const result = await ordersService.updateOrderStatus(
         req.params.id as string,
         req.body.status,
+        requestingChefId,
       );
       res.json(result);
     } catch (error) {

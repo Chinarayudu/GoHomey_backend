@@ -3,6 +3,7 @@ import { authService } from './auth.service';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
 import { RegisterDto, LoginDto, SendOtpDto, VerifyOtpDto, VerifyFirebaseTokenDto } from './dto/auth.dto';
 import { jwtAuth } from '../common/middleware/auth.middleware';
+import { authRateLimiter } from '../common/middleware/rateLimit.middleware';
 
 const authRouter = Router();
 
@@ -44,6 +45,7 @@ const authRouter = Router();
 authRouter.post(
 
   '/register',
+  authRateLimiter,
   validationMiddleware(RegisterDto),
   async (req, res, next) => {
     try {
@@ -100,6 +102,7 @@ authRouter.post(
 authRouter.post(
 
   '/login',
+  authRateLimiter,
   validationMiddleware(LoginDto),
   async (req, res, next) => {
     try {
@@ -161,6 +164,7 @@ authRouter.get('/profile', jwtAuth, (req, res) => {
  */
 authRouter.post(
   '/send-otp',
+  authRateLimiter,
   validationMiddleware(SendOtpDto),
   async (req, res, next) => {
     try {
@@ -214,6 +218,7 @@ authRouter.post(
  */
 authRouter.post(
   '/verify-otp',
+  authRateLimiter,
   validationMiddleware(VerifyOtpDto),
   async (req, res, next) => {
     try {

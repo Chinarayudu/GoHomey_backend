@@ -5,6 +5,7 @@ import { UpdateUserDto } from './dto/users.dto';
 import { CreateAddressDto, UpdateAddressDto as UpdateAddressDtoClass } from './dto/address.dto';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
+import { adminService } from '../admin/admin.service';
 
 const usersRouter = Router();
 
@@ -135,8 +136,13 @@ usersRouter.patch(
  *         description: Forbidden - Admin role required
  */
 // GET /api/v1/users (Admin only)
-usersRouter.get('/', jwtAuth, checkRoles(Role.ADMIN), (req, res) => {
-  res.json({ message: 'Admin: list all users' });
+usersRouter.get('/', jwtAuth, checkRoles(Role.ADMIN), async (req, res, next) => {
+  try {
+    const result = await adminService.getAllUsers();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // --- Address Management ---

@@ -680,7 +680,20 @@ export class OrdersService {
     });
   }
 
-  async updateOrderStatus(id: string, status: any) {
+  async updateOrderStatus(id: string, status: any, requestingChefId?: string) {
+    if (requestingChefId) {
+      const existing = await prisma.order.findUnique({
+        where: { id },
+        select: { chef_id: true },
+      });
+      if (!existing) {
+        throw createHttpError('Order not found', 404);
+      }
+      if (existing.chef_id !== requestingChefId) {
+        throw createHttpError('Forbidden: you do not own this order', 403);
+      }
+    }
+
     const order = await prisma.order.update({
       where: { id },
       data: { status },
@@ -706,12 +719,24 @@ export class OrdersService {
       }
     }
 
-    // Notify user of status update
-    await ordersQueue.add('send-order-status-update', {
-      orderId: order.id,
-      userId: order.user_id,
-      status,
-    });
+    // Notify user of status update. Fire-and-forget: BullMQ/ioredis queue a
+    // command indefinitely (not just retry-then-reject) while Redis is
+    // unreachable, so `await`ing this would hang the whole status-update
+    // response on notification-queue availability. This endpoint is now the
+    // authorization-checked source of truth for order status and must stay
+    // resilient to Redis being down.
+    ordersQueue
+      .add('send-order-status-update', {
+        orderId: order.id,
+        userId: order.user_id,
+        status,
+      })
+      .catch((error) => {
+        console.error('[Order Status] notification enqueue failed', {
+          order_id: order.id,
+          error: error instanceof Error ? error.message : error,
+        });
+      });
 
     return order;
   }

@@ -107,7 +107,7 @@ deliveryRouter.get('/active', jwtAuth, async (req, res, next) => {
  *         description: Delivery status updated
  */
 // PATCH /api/v1/delivery/:id/status
-deliveryRouter.patch('/:id/status', jwtAuth, async (req, res, next) => {
+deliveryRouter.patch('/:id/status', jwtAuth, checkRoles(Role.ADMIN), async (req, res, next) => {
   try {
     const result = await deliveryService.updateDeliveryStatus(req.params.id as string, req.body.status);
     res.json(result);
