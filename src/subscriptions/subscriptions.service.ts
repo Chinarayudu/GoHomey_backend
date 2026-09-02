@@ -1,5 +1,6 @@
 import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
+import { publicChefSelectWithUser } from '../chefs/chef.select';
 
 export class SubscriptionsService {
   async createPlan(data: any): Promise<any> {
@@ -13,13 +14,7 @@ export class SubscriptionsService {
       include: {
         slots: {
           include: {
-            chef: {
-              include: {
-                user: {
-                  select: { name: true },
-                },
-              },
-            },
+            chef: { select: publicChefSelectWithUser },
           },
         },
       },
@@ -54,13 +49,7 @@ export class SubscriptionsService {
       include: {
         slots: {
           include: {
-            chef: {
-              include: {
-                user: {
-                  select: { name: true },
-                },
-              },
-            },
+            chef: { select: publicChefSelectWithUser },
           },
         },
       },

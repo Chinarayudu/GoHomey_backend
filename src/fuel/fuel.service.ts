@@ -6,6 +6,7 @@ import {
 import { prisma } from '../prisma/prisma.service';
 import { calculateDistance } from '../common/utils/location';
 import { notificationsService } from '../notifications/notifications.service';
+import { publicChefSelect } from '../chefs/chef.select';
 
 const FULFILLMENT_LOOKAHEAD_DAYS = 2;
 const FUEL_PLAN_DURATION_LABELS: Record<number, string> = {
@@ -335,7 +336,7 @@ export class FuelService {
     const plan = await prisma.fuelPlan.findUnique({
       where: { id },
       include: {
-        slots: { include: { chef: true } },
+        slots: { include: { chef: { select: publicChefSelect } } },
       },
     });
 
@@ -376,28 +377,7 @@ export class FuelService {
         },
       },
       include: {
-        chef: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
-            bio: true,
-            rating: true,
-            is_verified: true,
-            trust_tier: true,
-            primary_cuisine: true,
-            kitchen_name: true,
-            kitchen_address: true,
-            latitude: true,
-            longitude: true,
-            max_capacity: true,
-            max_concurrent_slots_per_hour: true,
-            appliances: true,
-            kitchen_photo_url: true,
-            application_status: true,
-          },
-        },
+        chef: { select: publicChefSelect },
       },
       orderBy: [{ time_slot: 'asc' }, { created_at: 'desc' }],
     });
@@ -504,6 +484,7 @@ export class FuelService {
               name: true,
               kitchen_name: true,
               phone: true,
+              food_safety_cert_url: true,
             },
           },
         },
@@ -524,7 +505,13 @@ export class FuelService {
       include: {
         plan: true,
         assigned_chef: {
-          select: { id: true, name: true, kitchen_name: true, phone: true },
+          select: {
+            id: true,
+            name: true,
+            kitchen_name: true,
+            phone: true,
+            food_safety_cert_url: true,
+          },
         },
         fulfillments: {
           orderBy: { fulfillment_date: 'asc' },
@@ -722,6 +709,7 @@ export class FuelService {
                 name: true,
                 kitchen_name: true,
                 phone: true,
+                food_safety_cert_url: true,
               },
             },
           },
@@ -796,6 +784,7 @@ export class FuelService {
         longitude: true,
         max_concurrent_slots_per_hour: true,
         max_capacity: true,
+        food_safety_cert_url: true,
       },
     });
 
@@ -856,7 +845,7 @@ export class FuelService {
         },
       },
       include: {
-        chef: true,
+        chef: { select: publicChefSelect },
         subscription: {
           include: {
             plan: true,

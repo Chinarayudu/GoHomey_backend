@@ -1,5 +1,6 @@
 import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
+import { publicChefSelectWithUser } from '../chefs/chef.select';
 
 export class SocialService {
   private toNumber(value: unknown): number | undefined {
@@ -136,13 +137,7 @@ export class SocialService {
     const events = await prisma.socialEvent.findMany({
       where,
       include: {
-        chef: {
-          include: {
-            user: {
-              select: { name: true },
-            },
-          },
-        },
+        chef: { select: publicChefSelectWithUser },
       },
     });
 
@@ -162,13 +157,7 @@ export class SocialService {
     const event = await prisma.socialEvent.findUnique({
       where: { id },
       include: {
-        chef: {
-          include: {
-            user: {
-              select: { name: true },
-            },
-          },
-        },
+        chef: { select: publicChefSelectWithUser },
       },
     });
     if (!event) {

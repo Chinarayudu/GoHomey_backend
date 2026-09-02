@@ -1,6 +1,7 @@
 import { prisma } from '../prisma/prisma.service';
 import { DeliveryStatus } from '@prisma/client';
 import { paymentsService } from '../payments/payments.service';
+import { publicChefSelectWithUser } from '../chefs/chef.select';
 import {
   ShadowfaxClient,
   normalizeIndianPhone,
@@ -183,7 +184,7 @@ export class DeliveryService {
         order: {
           include: {
             user: { select: { name: true, phone: true } },
-            chef: { include: { user: { select: { name: true } } } },
+            chef: { select: publicChefSelectWithUser },
           },
         },
       },

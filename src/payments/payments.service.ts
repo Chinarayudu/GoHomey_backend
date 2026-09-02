@@ -299,6 +299,7 @@ export class PaymentsService {
               name: true,
               kitchen_name: true,
               phone: true,
+              food_safety_cert_url: true,
             },
           },
         },

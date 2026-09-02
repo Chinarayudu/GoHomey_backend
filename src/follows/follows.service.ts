@@ -94,6 +94,7 @@ export class FollowsService {
             primary_cuisine: true,
             kitchen_name: true,
             kitchen_photo_url: true,
+            food_safety_cert_url: true,
           },
         },
       },

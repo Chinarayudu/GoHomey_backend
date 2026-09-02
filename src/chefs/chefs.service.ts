@@ -4,32 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { isServiceWindowOpen } from '../common/utils/time';
 import { calculateDistance } from '../common/utils/location';
 import { lookupIfsc } from '../common/services/bank.service';
-
-const publicChefSelect = {
-  id: true,
-  name: true,
-  phone: true,
-  email: true,
-  role: true,
-  bio: true,
-  rating: true,
-  is_verified: true,
-  trust_tier: true,
-  created_at: true,
-  updated_at: true,
-  primary_cuisine: true,
-  kitchen_name: true,
-  kitchen_address: true,
-  latitude: true,
-  longitude: true,
-  max_capacity: true,
-  max_concurrent_slots_per_hour: true,
-  appliances: true,
-  kitchen_photo_url: true,
-  application_status: true,
-  registration_step: true,
-  user_id: true,
-};
+import { publicChefSelect } from './chef.select';
 
 const privateChefProfileSelect = {
   ...publicChefSelect,
@@ -37,7 +12,6 @@ const privateChefProfileSelect = {
   bank_account_number: true,
   ifsc_code: true,
   government_id_url: true,
-  food_safety_cert_url: true,
 };
 
 export class ChefsService {

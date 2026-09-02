@@ -1,4 +1,5 @@
 import { calculateDistance } from '../common/utils/location';
+import { publicChefSelect, publicChefSelectWithUser } from '../chefs/chef.select';
 import { prisma } from '../prisma/prisma.service';
 import { DailyMeal, Prisma } from '@prisma/client';
 import { isServiceWindowOpen } from '../common/utils/time';
@@ -53,13 +54,7 @@ export class MealsService {
         date: date ? new Date(date) : { gte: startOfToday },
       },
       include: {
-        chef: {
-          include: {
-            user: {
-              select: { name: true, email: true },
-            },
-          },
-        },
+        chef: { select: publicChefSelectWithUser },
       },
     });
 
@@ -88,7 +83,7 @@ export class MealsService {
   async findOne(id: string): Promise<any> {
     const meal = await prisma.dailyMeal.findUnique({
       where: { id },
-      include: { chef: true },
+      include: { chef: { select: publicChefSelect } },
     });
     if (!meal) {
       const error: any = new Error('Meal not found');

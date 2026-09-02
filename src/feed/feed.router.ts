@@ -53,10 +53,12 @@ feedRouter.get('/', jwtAuth, async (req, res, next) => {
         include: {
           chef: {
             select: {
+              id: true,
               name: true,
               kitchen_name: true,
               latitude: true,
               longitude: true,
+              food_safety_cert_url: true,
             },
           },
         },
@@ -68,10 +70,12 @@ feedRouter.get('/', jwtAuth, async (req, res, next) => {
         include: {
           chef: {
             select: {
+              id: true,
               name: true,
               kitchen_name: true,
               latitude: true,
               longitude: true,
+              food_safety_cert_url: true,
             },
           },
         },

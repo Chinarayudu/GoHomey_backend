@@ -2,6 +2,7 @@ import {
   calculateDistance,
   DELIVERY_RADIUS_KM,
 } from '../common/utils/location';
+import { publicChefSelect, publicChefSelectWithUser } from '../chefs/chef.select';
 import { prisma } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
@@ -35,13 +36,7 @@ export class PantryService {
         ...(category ? { category } : {}),
       },
       include: {
-        chef: {
-          include: {
-            user: {
-              select: { name: true },
-            },
-          },
-        },
+        chef: { select: publicChefSelectWithUser },
       },
     });
 
@@ -71,7 +66,7 @@ export class PantryService {
   async findOne(id: string): Promise<any> {
     const item = await prisma.pantryItem.findUnique({
       where: { id },
-      include: { chef: true },
+      include: { chef: { select: publicChefSelect } },
     });
     if (!item) {
       const error: any = new Error('Pantry item not found');
