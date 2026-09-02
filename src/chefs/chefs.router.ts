@@ -3,6 +3,9 @@ import { chefsService } from './chefs.service';
 import { jwtAuth, checkRoles, optionalJwtAuth } from '../common/middleware/auth.middleware';
 import { validationMiddleware } from '../common/middleware/validation.middleware';
 import { ChefRegisterStep1Dto, ChefRegisterStep2Dto } from './dto/chef-register.dto';
+import { UpdateChefProfileDto } from './dto/update-chef-profile.dto';
+import { lookupIfsc } from '../common/services/bank.service';
+import { authService } from '../auth/auth.service';
 import { chefDocumentUpload } from '../common/middleware/upload.middleware';
 import { cloudinaryService } from '../common/services/cloudinary.service';
 import { Role } from '@prisma/client';
@@ -226,10 +229,29 @@ chefsRouter.post(
       };
 
       const result = await chefsService.registerStep3(user.id, fileUrls, user.phone);
+
+      // Registration is complete — hand back a full session token so a chef who
+      // started from the short-lived isRegistrationPending token isn't left with
+      // an expiring credential.
+      let session: any = null;
+      try {
+        session = await authService.refreshSession({
+          id: user.id,
+          phone: user.phone,
+        });
+      } catch (refreshError) {
+        console.warn(
+          '[Chef Register] could not issue session after step-3:',
+          (refreshError as Error).message,
+        );
+      }
+
       res.status(200).json({
         status: 'success',
         message: 'Application submitted! Our concierge team will review your documents within 24 hours.',
         data: result,
+        token: session?.token,
+        user: session?.user,
       });
     } catch (error) {
       next(error);
@@ -378,23 +400,39 @@ chefsRouter.get(
  *         application/json:
  *           schema:
  *             type: object
+ *             description: Partial update — send only the fields being changed.
  *             properties:
  *               name: { type: string }
- *               email: { type: string }
+ *               email: { type: string, format: email }
  *               bio: { type: string }
+ *               primary_cuisine: { type: string }
  *               kitchen_name: { type: string }
  *               kitchen_address: { type: string }
+ *               latitude: { type: number }
+ *               longitude: { type: number }
+ *               max_capacity: { type: integer }
+ *               appliances: { type: array, items: { type: string } }
  *               bank_name: { type: string }
- *               bank_account_number: { type: string }
- *               ifsc_code: { type: string }
+ *               bank_account_number:
+ *                 type: string
+ *                 description: 9–18 digits
+ *               ifsc_code:
+ *                 type: string
+ *                 description: >-
+ *                   11-char IFSC (e.g. HDFC0001234). Format-checked, then verified
+ *                   against the public bank IFSC directory; an unknown code is
+ *                   rejected with 400.
  *     responses:
  *       200:
  *         description: Profile updated
+ *       400:
+ *         description: Validation failed or IFSC not found in the directory
  */
 chefsRouter.patch(
   '/profile',
   jwtAuth,
   checkRoles(Role.CHEF),
+  validationMiddleware(UpdateChefProfileDto, { forbidNonWhitelisted: false }),
   async (req: Request, res: Response, next) => {
     try {
       const user = req.user as any;
@@ -416,6 +454,60 @@ chefsRouter.patch(
         message: 'Profile updated successfully',
         data: result,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /chefs/bank/ifsc/{ifsc}:
+ *   get:
+ *     summary: Look up bank and branch for an IFSC code
+ *     description: >-
+ *       Resolves an IFSC against the public bank IFSC directory. Useful for
+ *       pre-filling / confirming bank name and branch on the profile form before
+ *       submitting PATCH /chefs/profile.
+ *     tags: [Chefs]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: ifsc
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: IFSC found
+ *       400:
+ *         description: Malformed IFSC code
+ *       404:
+ *         description: IFSC not found in the directory
+ */
+chefsRouter.get(
+  '/bank/ifsc/:ifsc',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req: Request, res: Response, next) => {
+    try {
+      const ifsc = String(req.params.ifsc || '').trim().toUpperCase();
+      if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Malformed IFSC code',
+        });
+      }
+
+      const details = await lookupIfsc(ifsc);
+      if (!details) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'IFSC not found in the bank directory',
+        });
+      }
+
+      res.json({ status: 'success', data: details });
     } catch (error) {
       next(error);
     }

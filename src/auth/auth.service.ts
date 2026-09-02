@@ -55,8 +55,13 @@ export class AuthService {
         gender: gender || 'OTHER',
       });
 
+      // Issue a real (non-expiring) session token immediately so a freshly
+      // registered user is logged in — they must never be left holding only the
+      // short-lived isRegistrationPending token, which would expire into a 401.
+      const { token } = await this.login(user);
+
       const { password: _, ...result } = user;
-      return result;
+      return { ...result, token };
     } catch (error: any) {
       if (error.status === 409) {
         const err: any = new Error(error.message);
@@ -65,6 +70,30 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Exchanges a still-valid token (typically the short-lived
+   * isRegistrationPending token from verify-otp / verify-firebase-token) for a
+   * fresh full session once the User/Chef record exists. Returns the same shape
+   * as verifyOtp: a full session when the account exists, or `{ isNewUser: true,
+   * token: <new temp token> }` when registration still isn't complete.
+   */
+  async refreshSession(current: { id?: string; phone?: string }) {
+    let phone = current.phone;
+
+    if (!phone && current.id) {
+      const byId = await prisma.user.findUnique({ where: { id: current.id } });
+      phone = byId?.phone;
+    }
+
+    if (!phone) {
+      const err: any = new Error('Token has no identity to refresh from');
+      err.status = 400;
+      throw err;
+    }
+
+    return this.resolveIdentity(phone);
   }
 
   // Fixed credentials for Google Play / App Store reviewers, who cannot receive
@@ -268,11 +297,14 @@ export class AuthService {
     }
 
     if (!person) {
-      // New user (neither standard user nor chef yet)
+      // New user (neither standard user nor chef yet). This token only lets the
+      // client reach /auth/register and /auth/refresh; it is deliberately
+      // short-lived. 24h gives a comfortable window to finish a multi-step chef
+      // signup before the client must re-verify via OTP/Firebase.
       const tempToken = jwt.sign(
         { phone: phone, role: Role.USER, isRegistrationPending: true },
         this.jwtSecret,
-        { expiresIn: '1h' }
+        { expiresIn: '24h' }
       );
 
       return {

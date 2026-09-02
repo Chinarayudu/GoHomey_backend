@@ -32,6 +32,7 @@ jest.mock('../chefs/chefs.service', () => ({
 jest.mock('../users/users.service', () => ({
   usersService: {
     findOne: jest.fn(),
+    create: jest.fn(),
   },
 }));
 
@@ -57,7 +58,10 @@ const mockPrisma = prisma as unknown as {
   chef: { update: jest.Mock };
 };
 const mockChefsService = chefsService as unknown as { findByPhone: jest.Mock };
-const mockUsersService = usersService as unknown as { findOne: jest.Mock };
+const mockUsersService = usersService as unknown as {
+  findOne: jest.Mock;
+  create: jest.Mock;
+};
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -241,7 +245,7 @@ describe('AuthService identity resolution (via verifyOtp)', () => {
     mockRedis.get.mockResolvedValue('123456');
   });
 
-  it('issues a 1h temp registration token for a brand-new phone', async () => {
+  it('issues a short-lived (24h) temp registration token for a brand-new phone', async () => {
     mockPrisma.user.findUnique.mockResolvedValue(null);
     mockChefsService.findByPhone.mockResolvedValue(null);
 
@@ -253,6 +257,9 @@ describe('AuthService identity resolution (via verifyOtp)', () => {
     expect(decoded.isRegistrationPending).toBe(true);
     expect(decoded.role).toBe('USER');
     expect(decoded.exp).toBeDefined();
+    // ~24h window (allow scheduling slack)
+    expect(decoded.exp - decoded.iat).toBeGreaterThanOrEqual(23 * 3600);
+    expect(decoded.exp - decoded.iat).toBeLessThanOrEqual(25 * 3600);
   });
 
   it('logs in an existing User already linked to a Chef', async () => {
@@ -380,6 +387,82 @@ describe('AuthService.login', () => {
       latitude: user.latitude,
       longitude: user.longitude,
     });
+  });
+});
+
+describe('AuthService.register', () => {
+  it('returns a full non-expiring session token alongside the user', async () => {
+    mockUsersService.create.mockResolvedValue({
+      id: 'user-9',
+      name: 'Fresh Signup',
+      email: 'fresh@homey.test',
+      phone: '+919876500020',
+      role: 'USER',
+      password: 'hashed',
+      latitude: null,
+      longitude: null,
+    });
+
+    const result: any = await defaultAuthService.register({
+      name: 'Fresh Signup',
+      email: 'fresh@homey.test',
+      phone: '+919876500020',
+      password: 'secret123',
+    });
+
+    expect(result.password).toBeUndefined();
+    expect(result.token).toBeDefined();
+    const decoded = jwt.verify(result.token, process.env.JWT_SECRET as string) as any;
+    expect(decoded.sub).toBe('user-9');
+    expect(decoded.exp).toBeUndefined();
+    expect(decoded.isRegistrationPending).toBeUndefined();
+  });
+});
+
+describe('AuthService.refreshSession', () => {
+  it('upgrades to a full session once the phone belongs to a registered user', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'user-10',
+      name: 'Now Registered',
+      email: 'now@homey.test',
+      phone: '+919876500021',
+      role: 'USER',
+      latitude: 1,
+      longitude: 2,
+      chef: null,
+    });
+    mockChefsService.findByPhone.mockResolvedValue(null);
+
+    const result: any = await defaultAuthService.refreshSession({
+      phone: '+919876500021',
+    });
+
+    expect(result.isNewUser).toBe(false);
+    const decoded = jwt.verify(result.token, process.env.JWT_SECRET as string) as any;
+    expect(decoded.sub).toBe('user-10');
+    expect(decoded.exp).toBeUndefined();
+  });
+
+  it('still returns isNewUser:true with a temp token when registration is incomplete', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockChefsService.findByPhone.mockResolvedValue(null);
+
+    const result: any = await defaultAuthService.refreshSession({
+      phone: '+919876500022',
+    });
+
+    expect(result.isNewUser).toBe(true);
+    const decoded = jwt.verify(result.token, process.env.JWT_SECRET as string) as any;
+    expect(decoded.isRegistrationPending).toBe(true);
+    expect(decoded.exp).toBeDefined();
+  });
+
+  it('rejects a token that carries neither phone nor a resolvable id', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      defaultAuthService.refreshSession({ id: 'ghost' }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });
 

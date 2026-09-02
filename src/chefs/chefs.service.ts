@@ -3,6 +3,7 @@ import { Chef, Prisma, Role, ChefApplicationStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { isServiceWindowOpen } from '../common/utils/time';
 import { calculateDistance } from '../common/utils/location';
+import { lookupIfsc } from '../common/services/bank.service';
 
 const publicChefSelect = {
   id: true,
@@ -543,21 +544,55 @@ export class ChefsService {
   }
 
   /**
-   * Update chef profile and bank details
+   * Update chef profile and bank details.
+   *
+   * Field formats are validated by UpdateChefProfileDto. When an IFSC is
+   * supplied we additionally confirm it exists in the bank directory and, if the
+   * chef didn't also send a bank_name, fill it in from the directory result. A
+   * directory outage does not block the update (the format check already ran).
    */
   async updateProfile(chefId: string, data: any) {
+    const update: Prisma.ChefUpdateInput = {
+      name: data.name,
+      email: data.email,
+      bio: data.bio,
+      primary_cuisine: data.primary_cuisine,
+      kitchen_name: data.kitchen_name,
+      kitchen_address: data.kitchen_address,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      max_capacity: data.max_capacity,
+      appliances: data.appliances,
+      bank_name: data.bank_name,
+      bank_account_number: data.bank_account_number,
+      ifsc_code: data.ifsc_code,
+    };
+
+    if (data.ifsc_code) {
+      try {
+        const branch = await lookupIfsc(data.ifsc_code);
+        if (!branch) {
+          const err: any = new Error(
+            'Invalid IFSC code: not found in the bank IFSC directory',
+          );
+          err.status = 400;
+          throw err;
+        }
+        if (!data.bank_name) {
+          update.bank_name = branch.bank;
+        }
+      } catch (err: any) {
+        if (err?.status === 400) throw err;
+        console.warn(
+          '[Bank] IFSC directory unavailable, saving without verification:',
+          err?.message,
+        );
+      }
+    }
+
     return prisma.chef.update({
       where: { id: chefId },
-      data: {
-        name: data.name,
-        email: data.email,
-        bio: data.bio,
-        kitchen_name: data.kitchen_name,
-        kitchen_address: data.kitchen_address,
-        bank_name: data.bank_name,
-        bank_account_number: data.bank_account_number,
-        ifsc_code: data.ifsc_code,
-      },
+      data: update,
       select: privateChefProfileSelect,
     });
   }

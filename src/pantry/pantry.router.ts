@@ -103,6 +103,18 @@ pantryRouter.post(
  *       - in: query
  *         name: chefId
  *         schema: { type: string }
+ *       - in: query
+ *         name: category
+ *         schema: { type: string }
+ *         description: Filter pantry items by category
+ *       - in: query
+ *         name: latitude
+ *         schema: { type: number }
+ *         description: User latitude for 3km radius filtering
+ *       - in: query
+ *         name: longitude
+ *         schema: { type: number }
+ *         description: User longitude for 3km radius filtering
  *     responses:
  *       200:
  *         description: List of pantry items retrieved
@@ -110,10 +122,16 @@ pantryRouter.post(
 // GET /api/v1/pantry
 pantryRouter.get('/', optionalJwtAuth, async (req, res, next) => {
   try {
-    const { chefId } = req.query as any;
+    const { chefId, category, latitude, longitude } = req.query as any;
+    const user = req.user as any;
+    const resLat = latitude ? parseFloat(latitude as string) : user?.latitude;
+    const resLon = longitude ? parseFloat(longitude as string) : user?.longitude;
 
     const result = await pantryService.findAll({
       chefId: chefId as string,
+      category: category as string,
+      latitude: resLat,
+      longitude: resLon,
     });
     res.json(result);
   } catch (error) {

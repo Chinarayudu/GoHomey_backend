@@ -39,7 +39,10 @@ const authRouter = Router();
  *             $ref: '#/components/schemas/RegisterDto'
  *     responses:
  *       201:
- *         description: User successfully registered
+ *         description: >-
+ *           User successfully registered. Response includes a full session
+ *           `token` (non-expiring) alongside the user fields — the client should
+ *           store it and drop any prior isRegistrationPending token.
  */
 // POST /api/v1/auth/register
 authRouter.post(
@@ -229,6 +232,37 @@ authRouter.post(
     }
   }
 );
+
+/**
+ * @openapi
+ * /auth/refresh:
+ *   post:
+ *     summary: Exchange a valid token for a fresh session
+ *     description: >-
+ *       Send the current Bearer token (including the short-lived
+ *       isRegistrationPending token issued by verify-otp / verify-firebase-token).
+ *       Once the account exists, returns a full session (`isNewUser: false`,
+ *       `token`, `user`, ...). If registration still isn't complete it returns
+ *       `isNewUser: true` with a new short-lived token. An expired token returns
+ *       401 `TOKEN_EXPIRED` — the client must re-verify via OTP/Firebase.
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Same shape as /auth/verify-otp
+ *       401:
+ *         description: Missing / invalid / expired token
+ */
+// POST /api/v1/auth/refresh
+authRouter.post('/refresh', jwtAuth, async (req, res, next) => {
+  try {
+    const result = await authService.refreshSession(req.user as any);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * @openapi

@@ -1,4 +1,7 @@
-import { calculateDistance } from '../common/utils/location';
+import {
+  calculateDistance,
+  DELIVERY_RADIUS_KM,
+} from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
@@ -19,11 +22,17 @@ export class PantryService {
     });
   }
 
-  async findAll(query: { chefId?: string }) {
-    const { chefId } = query;
+  async findAll(query: {
+    chefId?: string;
+    category?: string;
+    latitude?: number;
+    longitude?: number;
+  }) {
+    const { chefId, category, latitude, longitude } = query;
     const items = await prisma.pantryItem.findMany({
       where: {
         chef_id: chefId,
+        ...(category ? { category } : {}),
       },
       include: {
         chef: {
@@ -35,6 +44,26 @@ export class PantryService {
         },
       },
     });
+
+    if (
+      latitude !== undefined &&
+      longitude !== undefined &&
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude)
+    ) {
+      return items.filter((item) => {
+        if (item.chef.latitude == null || item.chef.longitude == null) {
+          return false;
+        }
+        const distance = calculateDistance(
+          latitude,
+          longitude,
+          item.chef.latitude,
+          item.chef.longitude,
+        );
+        return distance <= DELIVERY_RADIUS_KM;
+      });
+    }
 
     return items;
   }

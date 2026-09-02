@@ -37,7 +37,14 @@ export const jwtAuth = (req: Request, res: Response, next: NextFunction) => {
       return next(err);
     }
     if (!user) {
-      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+      const expired = info?.name === 'TokenExpiredError';
+      return res.status(401).json({
+        status: 'error',
+        code: expired ? 'TOKEN_EXPIRED' : 'UNAUTHORIZED',
+        message: expired
+          ? 'Session expired. Please sign in again.'
+          : 'Unauthorized',
+      });
     }
     req.user = user;
     next();

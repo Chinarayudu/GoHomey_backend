@@ -1,3 +1,6 @@
+/** Maximum distance (km) a customer may be from a chef to see their listings. */
+export const DELIVERY_RADIUS_KM = 3;
+
 /**
  * Calculates the distance between two points in kilometers using the Haversine formula.
  */
