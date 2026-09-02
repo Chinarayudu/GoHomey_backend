@@ -142,7 +142,31 @@ export class ChefsService {
       return newChef;
     }
 
-    // Update existing Chef
+    // Update existing Chef. If it isn't linked to a User yet but one exists for
+    // this phone, link them and upgrade that User to CHEF — otherwise the chef
+    // gets a USER-role token on their next login and 403s on chef routes.
+    if (!chef.user_id) {
+      const existingUser = await prisma.user.findUnique({
+        where: { phone: data.mobile_number },
+      });
+      if (existingUser) {
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { role: Role.CHEF },
+        });
+        return prisma.chef.update({
+          where: { id: chef.id },
+          data: {
+            name: data.full_name,
+            email: data.email,
+            primary_cuisine: data.primary_cuisine,
+            registration_step: Math.max(chef.registration_step, 1),
+            user_id: existingUser.id,
+          },
+        });
+      }
+    }
+
     return prisma.chef.update({
       where: { id: chef.id },
       data: {

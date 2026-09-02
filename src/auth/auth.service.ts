@@ -231,6 +231,16 @@ export class AuthService {
       if (person.chef) {
         isChef = true;
         chefProfile = person.chef;
+        // A linked Chef whose User.role drifted to USER (historical data, or a
+        // partial write where the link committed but the role upgrade didn't)
+        // would otherwise get a USER-role token and 403 on every chef route.
+        if (person.role !== Role.CHEF) {
+          person = await prisma.user.update({
+            where: { id: person.id },
+            data: { role: Role.CHEF },
+          });
+          person.chef = chefProfile;
+        }
       } else {
         // Fallback: Check if a Chef record exists by phone but isn't linked
         chefProfile = await chefsService.findByPhone(phone);

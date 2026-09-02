@@ -283,6 +283,38 @@ describe('AuthService identity resolution (via verifyOtp)', () => {
     expect(result.token).toBeDefined();
   });
 
+  it('repairs a linked Chef whose User.role drifted to USER (issues a CHEF token)', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'user-1b',
+      email: 'drifted@homey.test',
+      phone,
+      role: 'USER', // inconsistent: linked chef but role never upgraded
+      password: 'hashed',
+      latitude: 1,
+      longitude: 1,
+      chef: { id: 'chef-1b', registration_step: 3, application_status: 'APPROVED' },
+    });
+    mockPrisma.user.update.mockResolvedValue({
+      id: 'user-1b',
+      email: 'drifted@homey.test',
+      phone,
+      role: 'CHEF',
+      password: 'hashed',
+      latitude: 1,
+      longitude: 1,
+    });
+
+    const result: any = await defaultAuthService.verifyOtp(phone, '123456');
+
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1b' },
+      data: { role: 'CHEF' },
+    });
+    expect(result.isChef).toBe(true);
+    const decoded = jwt.verify(result.token, process.env.JWT_SECRET as string) as any;
+    expect(decoded.role).toBe('CHEF');
+  });
+
   it('links an unlinked Chef record found by phone and upgrades the User role to CHEF', async () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       id: 'user-2',
