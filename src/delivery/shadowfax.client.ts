@@ -13,8 +13,8 @@ export type ShadowfaxApiMode = 'testing' | 'production';
 export const SHADOWFAX_TESTING_BASE_URL =
   'https://hlbackend.staging.shadowfax.in';
 
-/** Live production API - do not use for QA. */
-export const SHADOWFAX_PRODUCTION_BASE_URL = 'https://flash-api.shadowfax.in';
+/** HL Marketplace live production API - do not use for QA. */
+export const SHADOWFAX_PRODUCTION_BASE_URL = 'https://api.shadowfax.in';
 
 /** Shadowfax staging is serviceable only around Koramangala. */
 export const SHADOWFAX_STAGING_SERVICEABLE_LOCATION = {
@@ -328,8 +328,23 @@ export class ShadowfaxClient {
     );
   }
 
-  async cancelOrder(orderId: string): Promise<unknown> {
-    return this.request('POST', '/order/cancel/', { order_id: orderId });
+  /**
+   * Cancels a Marketplace order.
+   * `PUT /api/v2/orders/{sfx_order_id}/cancel/`
+   * @param sfxOrderId the Shadowfax order id (stored as Delivery.external_tracking_id)
+   * @param reason free text, truncated to Shadowfax's 128-char limit
+   * @param user who initiated the cancellation
+   */
+  async cancelOrder(
+    sfxOrderId: string,
+    reason: string,
+    user: 'Customer' | 'Seller' | 'Rider' = 'Seller',
+  ): Promise<ShadowfaxMarketplaceOrderStatusResponse> {
+    return this.request<ShadowfaxMarketplaceOrderStatusResponse>(
+      'PUT',
+      `/api/v2/orders/${encodeURIComponent(sfxOrderId)}/cancel/`,
+      { reason: (reason || 'Cancelled by seller').slice(0, 128), user },
+    );
   }
 
   async allotSandboxRider(

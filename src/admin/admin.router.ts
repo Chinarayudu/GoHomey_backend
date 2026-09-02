@@ -305,6 +305,65 @@ adminRouter.post(
 
 /**
  * @openapi
+ * /admin/deliveries/{id}/cancel-shadowfax:
+ *   post:
+ *     summary: Cancel a dispatched Shadowfax order (Admin only)
+ *     description: >-
+ *       Calls Shadowfax `PUT /api/v2/orders/{sfx_order_id}/cancel/`. Allowed only
+ *       before the rider collects the shipment. Marks the delivery FAILED and
+ *       reverts an OUT_FOR_DELIVERY order to READY_FOR_PICKUP.
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Delivery ID
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason: { type: string, description: "Free text, max 128 chars" }
+ *               user:
+ *                 type: string
+ *                 enum: [Customer, Seller, Rider]
+ *                 default: Seller
+ *     responses:
+ *       200:
+ *         description: Cancellation sent; returns delivery/order/provider status
+ *       409:
+ *         description: Delivery already picked up or delivered
+ */
+// POST /api/v1/admin/deliveries/:id/cancel-shadowfax
+adminRouter.post(
+  '/deliveries/:id/cancel-shadowfax',
+  async (req, res, next) => {
+    try {
+      const allowedUsers = new Set(['Customer', 'Seller', 'Rider']);
+      const user = allowedUsers.has(req.body?.user) ? req.body.user : 'Seller';
+      const reason =
+        typeof req.body?.reason === 'string' && req.body.reason.trim()
+          ? req.body.reason.trim()
+          : undefined;
+
+      const result = await deliveryService.cancelShadowfaxDelivery(
+        req.params.id,
+        reason,
+        user,
+      );
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/**
+ * @openapi
  * /admin/orders/{id}:
  *   get:
  *     summary: Get detailed order info (Admin only)

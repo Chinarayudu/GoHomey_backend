@@ -871,6 +871,88 @@ export class DeliveryService {
     };
   }
 
+  /**
+   * Cancels a dispatched Shadowfax Marketplace order.
+   * Calls `PUT /api/v2/orders/{sfx_order_id}/cancel/`. Shadowfax only allows this
+   * before the rider collects the shipment; a post-pickup cancel needs the RTO
+   * / return flow instead. On success the delivery is marked FAILED (same as the
+   * inbound CANCELLED webhook) and, if the order was OUT_FOR_DELIVERY, it is
+   * reverted to READY_FOR_PICKUP so it can be re-dispatched.
+   */
+  async cancelShadowfaxDelivery(
+    deliveryId: string,
+    reason = 'Cancelled by seller',
+    user: 'Customer' | 'Seller' | 'Rider' = 'Seller',
+  ) {
+    const delivery = await prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: { partner: true, order: { select: { id: true, status: true } } },
+    });
+
+    if (!delivery) {
+      const err: any = new Error('Delivery not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const sfxOrderId = delivery.external_tracking_id;
+    if (!sfxOrderId) {
+      const err: any = new Error(
+        'Delivery has no Shadowfax order ID. Nothing to cancel.',
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    if (delivery.status === 'PICKED_UP' || delivery.status === 'DELIVERED') {
+      const err: any = new Error(
+        `Delivery is already ${delivery.status}. Post-pickup cancellation requires the Shadowfax return (RTO) flow.`,
+      );
+      err.status = 409;
+      throw err;
+    }
+
+    const partner = delivery.partner ?? (await this.getShadowfaxPartner());
+    const apiKey =
+      normalizeShadowfaxApiToken(process.env.SHADOWFAX_API_TOKEN) ||
+      normalizeShadowfaxApiToken(partner.api_key);
+    if (!apiKey) {
+      const err: any = new Error(
+        'Shadowfax API token is not configured on the server',
+      );
+      err.status = 500;
+      throw err;
+    }
+
+    const client = ShadowfaxClient.fromEnv(apiKey, partner.base_url);
+    const response = await client.cancelOrder(sfxOrderId, reason, user);
+
+    const updatedDelivery = await prisma.delivery.update({
+      where: { id: delivery.id },
+      data: { status: 'FAILED' },
+    });
+
+    let orderStatus = delivery.order?.status;
+    if (delivery.order && delivery.order.status === 'OUT_FOR_DELIVERY') {
+      const updatedOrder = await prisma.order.update({
+        where: { id: delivery.order.id },
+        data: { status: 'READY_FOR_PICKUP' },
+      });
+      orderStatus = updatedOrder.status;
+    }
+
+    return {
+      message: 'Shadowfax order cancelled',
+      delivery_id: delivery.id,
+      order_id: delivery.order?.id,
+      shadowfax_order_id: sfxOrderId,
+      delivery_status: updatedDelivery.status,
+      order_status: orderStatus,
+      provider_status: response?.data?.status,
+      response,
+    };
+  }
+
   async getOrderLiveTracking(
     orderId: string,
     requester: { id: string; role?: string },

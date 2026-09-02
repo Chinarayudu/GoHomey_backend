@@ -46,6 +46,32 @@ POST https://hlbackend.staging.shadowfax.in/api/v2/orders/
 
 The integration stores the returned Shadowfax order identifier in `Delivery.external_tracking_id`.
 
+## Cancellation
+
+Admin cancel endpoint (before rider pickup only):
+
+```http
+POST /api/v1/admin/deliveries/{delivery_id}/cancel-shadowfax
+Authorization: Bearer <admin jwt>
+Content-Type: application/json
+
+{
+  "reason": "Test order",
+  "user": "Seller"
+}
+```
+
+`user` is one of `Customer`, `Seller`, `Rider` (default `Seller`); `reason` is free text (truncated to Shadowfax's 128-char limit). This calls:
+
+```text
+PUT https://api.shadowfax.in/api/v2/orders/{sfx_order_id}/cancel/
+Authorization: Token <Shadowfax token>
+```
+
+On success the delivery is set to `FAILED` and an `OUT_FOR_DELIVERY` order is reverted to `READY_FOR_PICKUP` (re-dispatchable). Shadowfax rejects cancellation once the rider has collected the shipment — after pickup, use the return (RTO) flow (`CUSTOMER_RETURN` / `SELLER_RETURN`).
+
+Production base URL: `https://api.shadowfax.in`. Staging: `https://hlbackend.staging.shadowfax.in`.
+
 ## Live Tracking
 
 The user app can fetch live tracking details by order ID:

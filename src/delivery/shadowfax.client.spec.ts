@@ -209,10 +209,44 @@ describe('ShadowfaxClient — request construction (mocked fetch, no real networ
       json: async () => ({}),
     } as any);
 
-    await expect(client.cancelOrder('order-1')).rejects.toMatchObject({
+    await expect(
+      client.cancelOrder('order-1', 'test', 'Seller'),
+    ).rejects.toMatchObject({
       status: 500,
       message: 'Shadowfax API error (500)',
     });
+  });
+
+  it('cancelOrder PUTs /api/v2/orders/:id/cancel/ with reason + user', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ message: 'done successfully', data: { status: 'CANCELLED' } }),
+    } as any);
+
+    await client.cancelOrder('20611002', 'Seller missing items', 'Seller');
+
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/api/v2/orders/20611002/cancel/`);
+    expect((options as any).method).toBe('PUT');
+    expect(JSON.parse((options as any).body)).toEqual({
+      reason: 'Seller missing items',
+      user: 'Seller',
+    });
+  });
+
+  it('cancelOrder truncates the reason to 128 chars', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ message: 'done successfully', data: {} }),
+    } as any);
+
+    await client.cancelOrder('1', 'x'.repeat(200), 'Customer');
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(body.reason).toHaveLength(128);
+    expect(body.user).toBe('Customer');
   });
 
   it('ShadowfaxClient.fromEnv builds a client using the current env resolution', async () => {
