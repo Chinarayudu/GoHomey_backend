@@ -22,13 +22,17 @@ export function validationMiddleware<T>(
     });
 
     if (errors.length > 0) {
-      const formattedErrors = errors.map((error: ValidationError) => ({
-        property: error.property,
-        constraints: error.constraints,
-      }));
+      const formattedErrors = errors.map((error: ValidationError) => {
+        const constraints = error.constraints || {};
+        const message = Object.values(constraints)[0] ?? `${error.property} is invalid`;
+        return { property: error.property, message, constraints };
+      });
       res.status(400).json({
         status: 'error',
-        message: 'Validation failed',
+        // Surface the first field's own message (e.g. "bank_account_number must
+        // be 9 to 18 digits") instead of a generic "Validation failed" — clients
+        // that only read `message` still get something accurate to show.
+        message: formattedErrors[0].message,
         errors: formattedErrors,
       });
       return;
