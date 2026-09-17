@@ -7,6 +7,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { isServiceWindowOpen } from '../common/utils/time';
+import { calculateDistance, DELIVERY_RADIUS_KM } from '../common/utils/location';
 
 type CheckoutItemType =
   | 'DAILY_MEAL'
@@ -45,6 +46,52 @@ function createHttpError(message: string, status: number) {
   const error: any = new Error(message);
   error.status = status;
   return error;
+}
+
+/**
+ * Rejects the order if the chef is farther than DELIVERY_RADIUS_KM from the
+ * delivery address. This is the enforcement point checkout must go through -
+ * the same radius is applied when browsing (feed/meals/pantry listings), but
+ * those filters are opt-in query params and were not re-checked here, so a
+ * client could previously check out with a chef far outside the radius.
+ * Coordinates that are missing (unset delivery address or ungeocoded chef)
+ * are skipped rather than blocked, matching pre-existing optional behavior.
+ */
+async function assertChefWithinDeliveryRadius(
+  tx: Prisma.TransactionClient,
+  chefId: string,
+  deliveryAddress: { latitude: number | null; longitude: number | null } | null,
+) {
+  if (
+    !deliveryAddress ||
+    deliveryAddress.latitude == null ||
+    deliveryAddress.longitude == null
+  ) {
+    return;
+  }
+
+  const chef = await tx.chef.findUnique({
+    where: { id: chefId },
+    select: { latitude: true, longitude: true },
+  });
+
+  if (!chef || chef.latitude == null || chef.longitude == null) {
+    return;
+  }
+
+  const distance = calculateDistance(
+    deliveryAddress.latitude,
+    deliveryAddress.longitude,
+    chef.latitude,
+    chef.longitude,
+  );
+
+  if (distance > DELIVERY_RADIUS_KM) {
+    throw createHttpError(
+      `This chef is outside the ${DELIVERY_RADIUS_KM}km delivery radius for the selected address`,
+      400,
+    );
+  }
 }
 
 function resolvePlatformFeeRupees(): number {
@@ -129,6 +176,8 @@ export class OrdersService {
         throw error;
       }
 
+      await assertChefWithinDeliveryRadius(tx, meal.chef_id, deliveryAddress);
+
       // 2. Decrement slots
       await tx.dailyMeal.update({
         where: { id: mealId },
@@ -202,6 +251,8 @@ export class OrdersService {
         error.status = 400;
         throw error;
       }
+
+      await assertChefWithinDeliveryRadius(tx, event.chef_id, deliveryAddress);
 
       await tx.socialEvent.update({
         where: { id: eventId },
@@ -282,6 +333,8 @@ export class OrdersService {
         error.status = 400;
         throw error;
       }
+
+      await assertChefWithinDeliveryRadius(tx, item.chef_id, deliveryAddress);
 
       await tx.pantryItem.update({
         where: { id: itemId },
@@ -597,6 +650,8 @@ export class OrdersService {
           default:
             throw new Error(`Unsupported item type: ${itemRequest.type}`);
         }
+
+        await assertChefWithinDeliveryRadius(tx, chefId, deliveryAddress);
 
         // Initialize group if not exists
         if (!orderGroups[chefId]) {
