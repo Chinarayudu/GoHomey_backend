@@ -229,6 +229,19 @@ function generateShadowfaxRequestId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+/** Dumps response headers verbatim (as Shadowfax sent them) for the log; never throws. */
+function safeExtractHeaders(response: Response): Record<string, string> | undefined {
+  try {
+    const headers: Record<string, string> = {};
+    (response as any).headers?.forEach?.((value: string, key: string) => {
+      headers[key] = value;
+    });
+    return Object.keys(headers).length ? headers : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Reads the response body for logging + parsing. Real fetch Responses support
  * `.clone()`, so we keep a raw-text copy for the log even when `.json()`
@@ -294,9 +307,17 @@ export class ShadowfaxClient {
       request_id: requestId,
       method,
       endpoint,
-      base_url: this.baseUrl,
+      url: `${this.baseUrl}${endpoint}`,
       client_order_id: clientOrderId,
-      request_body_json: body !== undefined ? stringifyShadowfaxBody(body) : undefined,
+      // Authorization value itself is never logged (it's a live secret) -
+      // everything else here is exactly what goes out on the wire.
+      request_headers: {
+        Authorization: 'Token [redacted]',
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      request_body_json:
+        body !== undefined ? stringifyShadowfaxBody(body) : undefined,
     });
 
     let response: Response;
@@ -335,14 +356,19 @@ export class ShadowfaxClient {
       endpoint,
       client_order_id: clientOrderId,
       status: response.status,
+      status_text: response.statusText || undefined,
       duration_ms: durationMs,
+      response_headers: safeExtractHeaders(response),
     };
 
     if (shouldLogShadowfaxResponseBody()) {
+      // response_raw_body is the literal, byte-for-byte body Shadowfax sent
+      // back - use this, not response_body_json (our parsed/re-serialized
+      // convenience copy), when handing this to Shadowfax to dispute a call.
+      baseLog.response_raw_body = rawText || '(empty body)';
       baseLog.response_body_json = stringifyShadowfaxBody(data);
       if (parseError) {
         baseLog.response_parse_error = parseError;
-        baseLog.response_raw_body = rawText || '(empty body)';
       }
     }
 
