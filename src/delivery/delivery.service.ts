@@ -586,8 +586,6 @@ export class DeliveryService {
 
     const client = ShadowfaxClient.fromEnv(apiKey, partner.base_url);
 
-    const isPrepaid = order.payment?.status === 'COMPLETED';
-
     const payload: ShadowfaxCreateOrderPayload = {
       has_tip: false,
       tip_amount: 0,
@@ -628,7 +626,14 @@ export class DeliveryService {
           new Date(Date.now() + 15 * 60 * 1000),
         ),
         order_value: Number(order.total_price || 0),
-        paid: isPrepaid ? 'true' : 'false',
+        // GoHomey has no cash-on-delivery flow - Razorpay payment is
+        // collected and held in escrow at checkout, before the order can
+        // ever reach READY_FOR_PICKUP/dispatch. This was previously derived
+        // from order.payment?.status === 'COMPLETED', which sent COD to
+        // Shadowfax any time that check didn't line up exactly (payment
+        // relation missing/stale at dispatch time), even though the
+        // customer had already paid in full.
+        paid: 'true',
         client_order_id: order.id,
         pickup_otp: '1232',
         return_otp: '1234',
