@@ -198,11 +198,15 @@ export function shouldUseShadowfaxStagingCoordinates(): boolean {
   );
 }
 
+/**
+ * Response body logging used to default to off in production (only "testing"
+ * mode logged it), which is why prior production order failures (e.g. plain
+ * 503s) showed up with no diagnostic detail. Now on by default in every
+ * mode; set SHADOWFAX_LOG_RESPONSE_BODY=false to opt back out.
+ */
 function shouldLogShadowfaxResponseBody(): boolean {
   const setting = process.env.SHADOWFAX_LOG_RESPONSE_BODY?.trim().toLowerCase();
-  if (setting === 'true') return true;
-  if (setting === 'false') return false;
-  return resolveShadowfaxApiMode() === 'testing';
+  return setting !== 'false';
 }
 
 function stringifyShadowfaxBody(data: unknown): string {
@@ -210,6 +214,48 @@ function stringifyShadowfaxBody(data: unknown): string {
     return JSON.stringify(data);
   } catch {
     return '[Unserializable Shadowfax response body]';
+  }
+}
+
+/** Pulls GoHomey's own order id out of a request payload so log lines can be traced back to an order. */
+function extractShadowfaxClientOrderId(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const b = body as Record<string, any>;
+  return b.order_details?.client_order_id ?? b.client_order_id ?? undefined;
+}
+
+/** Short id shared by a request's start/success/error log lines so they can be paired up in a log stream. */
+function generateShadowfaxRequestId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * Reads the response body for logging + parsing. Real fetch Responses support
+ * `.clone()`, so we keep a raw-text copy for the log even when `.json()`
+ * fails - critical for diagnosing 503s, which often come back as an empty
+ * body or an HTML error page from a load balancer rather than JSON.
+ */
+async function readShadowfaxResponseBody(
+  response: Response,
+): Promise<{ data: unknown; parseError?: string; rawText?: string }> {
+  let rawText: string | undefined;
+  if (typeof (response as any).clone === 'function') {
+    try {
+      rawText = await response.clone().text();
+    } catch {
+      // best-effort only; fall through to the json() attempt below
+    }
+  }
+
+  try {
+    const data = await response.json();
+    return { data, rawText };
+  } catch (err) {
+    return {
+      data: {},
+      parseError: err instanceof Error ? err.message : String(err),
+      rawText,
+    };
   }
 }
 
@@ -240,56 +286,85 @@ export class ShadowfaxClient {
     endpoint: string,
     body?: unknown,
   ): Promise<T> {
+    const requestId = generateShadowfaxRequestId();
+    const clientOrderId = extractShadowfaxClientOrderId(body);
     const startedAt = Date.now();
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+
+    console.log('[SHADOWFAX_API] request', {
+      request_id: requestId,
       method,
-      headers: {
-        Authorization: formatShadowfaxAuthorization(this.apiKey),
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
+      endpoint,
+      base_url: this.baseUrl,
+      client_order_id: clientOrderId,
+      request_body_json: body !== undefined ? stringifyShadowfaxBody(body) : undefined,
     });
 
-    const data = await response.json().catch(() => ({}));
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method,
+        headers: {
+          Authorization: formatShadowfaxAuthorization(this.apiKey),
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (networkError) {
+      console.error('[SHADOWFAX_API] network error', {
+        request_id: requestId,
+        method,
+        endpoint,
+        client_order_id: clientOrderId,
+        duration_ms: Date.now() - startedAt,
+        error:
+          networkError instanceof Error
+            ? networkError.message
+            : String(networkError),
+      });
+      throw networkError;
+    }
+
+    const { data, parseError, rawText } =
+      await readShadowfaxResponseBody(response);
     const durationMs = Date.now() - startedAt;
+
+    const baseLog: Record<string, unknown> = {
+      request_id: requestId,
+      method,
+      endpoint,
+      client_order_id: clientOrderId,
+      status: response.status,
+      duration_ms: durationMs,
+    };
+
+    if (shouldLogShadowfaxResponseBody()) {
+      baseLog.response_body_json = stringifyShadowfaxBody(data);
+      if (parseError) {
+        baseLog.response_parse_error = parseError;
+        baseLog.response_raw_body = rawText || '(empty body)';
+      }
+    }
 
     if (!response.ok) {
       const message =
         (data as { message?: string }).message ||
         (data as { error?: string }).error ||
         `Shadowfax API error (${response.status})`;
-      const errorLog: Record<string, unknown> = {
-        method,
-        endpoint,
-        status: response.status,
-        duration_ms: durationMs,
+
+      console.error('[SHADOWFAX_API] response error', {
+        ...baseLog,
         message,
-      };
+      });
 
-      if (shouldLogShadowfaxResponseBody()) {
-        errorLog.response_body_json = stringifyShadowfaxBody(data);
-      }
-
-      console.error('[Shadowfax API] request failed', errorLog);
       const err: any = new Error(message);
       err.status = response.status;
       err.body = data;
+      if (rawText) err.raw_body = rawText;
       throw err;
     }
 
-    const successLog: Record<string, unknown> = {
-      method,
-      endpoint,
-      status: response.status,
-      duration_ms: durationMs,
-    };
-
-    if (shouldLogShadowfaxResponseBody()) {
-      successLog.response_body_json = stringifyShadowfaxBody(data);
-    }
-
-    console.log('[Shadowfax API] request success', successLog);
+    console.log('[SHADOWFAX_API] response success', baseLog);
 
     return data as T;
   }

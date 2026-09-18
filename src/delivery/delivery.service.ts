@@ -515,12 +515,12 @@ export class DeliveryService {
     } | null,
   ) {
     console.log(
-      `[Shadowfax API] Pushing delivery ${deliveryId} to Shadowfax...`,
+      `[SHADOWFAX_API] Pushing delivery ${deliveryId} to Shadowfax...`,
     );
 
     const apiMode = resolveShadowfaxApiMode();
     const apiBaseUrl = resolveShadowfaxBaseUrl(partner.base_url);
-    console.log(`[Shadowfax API] mode=${apiMode} base=${apiBaseUrl}`);
+    console.log(`[SHADOWFAX_API] mode=${apiMode} base=${apiBaseUrl}`);
 
     const apiKey =
       normalizeShadowfaxApiToken(process.env.SHADOWFAX_API_TOKEN) ||
@@ -541,7 +541,7 @@ export class DeliveryService {
         ? '9999999999'
         : null;
 
-    console.log('[Shadowfax API] config check', {
+    console.log('[SHADOWFAX_API] config check', {
       token_configured: Boolean(apiKey),
       client_code_configured: Boolean(clientCode),
       staging_coordinates_enabled: Boolean(stagingLocation),
@@ -646,7 +646,11 @@ export class DeliveryService {
       const createResponse = await client.createOrder(payload);
 
       if (createResponse.is_order_created === false) {
-        console.error('Shadowfax create-order rejected:', createResponse);
+        console.error('[SHADOWFAX_API] marketplace order create rejected', {
+          order_id: order.id,
+          delivery_id: deliveryId,
+          response: createResponse,
+        });
         return {
           success: false,
           error: createResponse.message || createResponse,
@@ -660,7 +664,7 @@ export class DeliveryService {
       const createTrackingUrl =
         this.extractShadowfaxTrackingUrl(createResponse);
 
-      console.log('[Shadowfax API] marketplace order created', {
+      console.log('[SHADOWFAX_API] marketplace order created', {
         order_id: order.id,
         delivery_id: deliveryId,
         external_order_id: externalOrderId,
@@ -678,7 +682,11 @@ export class DeliveryService {
         shadowfax_message: createResponse.message,
       };
     } catch (error) {
-      console.error('Failed to call Shadowfax API:', error);
+      console.error('[SHADOWFAX_API] marketplace order create failed', {
+        order_id: order.id,
+        delivery_id: deliveryId,
+        error: formatShadowfaxError(error),
+      });
       return { success: false, error };
     }
   }
@@ -1074,7 +1082,7 @@ export class DeliveryService {
           const internalStatus =
             this.mapShadowfaxDeliveryStatus(providerStatus);
 
-          console.log('[Shadowfax Tracking] status refresh', {
+          console.log('[SHADOWFAX_TRACKING] status refresh', {
             order_id: order.id,
             delivery_id: delivery.id,
             sfx_order_id: delivery.external_tracking_id,
@@ -1106,7 +1114,7 @@ export class DeliveryService {
           }
         } catch (error) {
           trackingRefreshError = formatShadowfaxError(error);
-          console.error('[Shadowfax Tracking] status refresh failed', {
+          console.error('[SHADOWFAX_TRACKING] status refresh failed', {
             order_id: order.id,
             delivery_id: delivery.id,
             sfx_order_id: delivery.external_tracking_id,
