@@ -12,11 +12,18 @@ jest.mock('../prisma/prisma.service', () => ({
     chef: {
       findUnique: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     address: {
       findMany: jest.fn(),
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
+    order: { count: jest.fn(), updateMany: jest.fn() },
+    fuelSubscription: { count: jest.fn() },
+    follow: { deleteMany: jest.fn() },
+    devicePushToken: { deleteMany: jest.fn() },
+    $transaction: jest.fn(),
   },
 }));
 
@@ -25,8 +32,13 @@ import { usersService } from './users.service';
 
 const mockPrisma = prisma as unknown as {
   user: { findUnique: jest.Mock; findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
-  chef: { findUnique: jest.Mock; update: jest.Mock };
-  address: { findMany: jest.Mock; updateMany: jest.Mock };
+  chef: { findUnique: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+  address: { findMany: jest.Mock; updateMany: jest.Mock; deleteMany: jest.Mock };
+  order: { count: jest.Mock; updateMany: jest.Mock };
+  fuelSubscription: { count: jest.Mock };
+  follow: { deleteMany: jest.Mock };
+  devicePushToken: { deleteMany: jest.Mock };
+  $transaction: jest.Mock;
 };
 
 beforeEach(() => {
@@ -238,5 +250,44 @@ describe('UsersService.updateLocation', () => {
     const result = await usersService.updateLocation('user-8', baseLat, baseLng);
 
     expect(result.matchedAddress).toBeNull();
+  });
+});
+
+describe('UsersService.deleteAccount', () => {
+  it('rejects with 409 while the user has orders in progress', async () => {
+    mockPrisma.order.count.mockResolvedValue(1);
+
+    await expect(usersService.deleteAccount('user-9')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 409 while the user has an active Fuel subscription', async () => {
+    mockPrisma.order.count.mockResolvedValue(0);
+    mockPrisma.fuelSubscription.count.mockResolvedValue(1);
+
+    await expect(usersService.deleteAccount('user-9')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('scrubs personal data, frees the phone number and unlinks the chef profile', async () => {
+    mockPrisma.order.count.mockResolvedValue(0);
+    mockPrisma.fuelSubscription.count.mockResolvedValue(0);
+    mockPrisma.$transaction.mockResolvedValue([]);
+
+    await usersService.deleteAccount('user-9');
+
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.address.deleteMany).toHaveBeenCalledWith({ where: { user_id: 'user-9' } });
+    expect(mockPrisma.chef.updateMany).toHaveBeenCalledWith({
+      where: { user_id: 'user-9' },
+      data: { user_id: null },
+    });
+
+    const [{ data }] = mockPrisma.user.update.mock.calls[0];
+    expect(data.phone).toBe('deleted_user-9');
+    expect(data.email).toBe('deleted_user-9@deleted.invalid');
+    expect(data.name).toBe('Deleted User');
+    expect(data.password).toMatch(/^\$2[aby]\$/);
+    expect(data.deleted_at).toBeInstanceOf(Date);
   });
 });

@@ -3,6 +3,7 @@ import passport from 'passport';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
 import { Role } from '@prisma/client';
 import { JWT_SECRET } from '../../config/env';
+import { prisma } from '../../prisma/prisma.service';
 
 // Configure Passport with JWT Strategy for Express
 const options = {
@@ -13,8 +14,18 @@ const options = {
 passport.use(
   new JwtStrategy(options, async (payload, done) => {
     try {
+      if (payload?.sub) {
+        // Tokens don't expire, so a deleted account must be rejected explicitly.
+        const account = await prisma.user.findUnique({
+          where: { id: payload.sub },
+          select: { deleted_at: true },
+        });
+        if (account?.deleted_at) {
+          return done(null, false, { name: 'AccountDeleted' });
+        }
+      }
       if (payload) {
-        return done(null, { 
+        return done(null, {
           id: payload.sub, 
           email: payload.email, 
           phone: payload.phone,
@@ -37,6 +48,13 @@ export const jwtAuth = (req: Request, res: Response, next: NextFunction) => {
       return next(err);
     }
     if (!user) {
+      if (info?.name === 'AccountDeleted') {
+        return res.status(401).json({
+          status: 'error',
+          code: 'ACCOUNT_DELETED',
+          message: 'This account has been deleted.',
+        });
+      }
       const expired = info?.name === 'TokenExpiredError';
       return res.status(401).json({
         status: 'error',

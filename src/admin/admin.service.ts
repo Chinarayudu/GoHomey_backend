@@ -397,7 +397,7 @@ export class AdminService {
 
   async getAllUsers() {
     return prisma.user.findMany({
-      where: { role: 'USER' },
+      where: { role: 'USER', deleted_at: null },
       select: {
         id: true,
         name: true,

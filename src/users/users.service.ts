@@ -2,6 +2,7 @@ import { calculateDistance } from '../common/utils/location';
 import { prisma } from '../prisma/prisma.service';
 import { User, Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 
 const safeUserSelect = {
   id: true,
@@ -294,6 +295,56 @@ export class UsersService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Self-service account deletion from the user app. The User row is kept
+   * (anonymized) so orders, payments and chef payouts stay intact; personal
+   * data is scrubbed and the phone number is freed. A linked Chef profile is
+   * only unlinked — the chef can still log in with the same number, which
+   * creates a fresh User for them via the normal auth flow.
+   */
+  async deleteAccount(userId: string) {
+    const activeOrders = await prisma.order.count({
+      where: {
+        user_id: userId,
+        status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'] },
+      },
+    });
+    if (activeOrders > 0) {
+      throw createHttpError('You have orders in progress. Please wait until they are delivered or cancelled.', 409);
+    }
+
+    const activeSubscriptions = await prisma.fuelSubscription.count({
+      where: { user_id: userId, status: { in: ['ACTIVE', 'PAUSED'] } },
+    });
+    if (activeSubscriptions > 0) {
+      throw createHttpError('You have an active Fuel subscription. Please cancel it before deleting your account.', 409);
+    }
+
+    const scrubbedPassword = await bcrypt.hash(randomUUID(), 10);
+
+    await prisma.$transaction([
+      prisma.order.updateMany({ where: { user_id: userId }, data: { delivery_address_id: null } }),
+      prisma.address.deleteMany({ where: { user_id: userId } }),
+      prisma.follow.deleteMany({ where: { user_id: userId } }),
+      prisma.devicePushToken.deleteMany({ where: { user_id: userId } }),
+      prisma.chef.updateMany({ where: { user_id: userId }, data: { user_id: null } }),
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          name: 'Deleted User',
+          phone: `deleted_${userId}`,
+          email: `deleted_${userId}@deleted.invalid`,
+          password: scrubbedPassword,
+          gender: null,
+          fitness_goals: [],
+          latitude: null,
+          longitude: null,
+          deleted_at: new Date(),
+        },
+      }),
+    ]);
   }
 
   async updateLocation(userId: string, latitude: number, longitude: number) {

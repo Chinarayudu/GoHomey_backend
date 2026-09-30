@@ -100,6 +100,7 @@ model User {
   gender     Gender?  @default(OTHER)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  deleted_at DateTime? // Set when the user deletes their account; PII is scrubbed, orders are kept
 
   dietary_preference DietaryPreference @default(BOTH)
   fitness_goals      String[]          @default([])

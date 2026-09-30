@@ -123,6 +123,38 @@ usersRouter.patch(
 
 /**
  * @openapi
+ * /users/profile:
+ *   delete:
+ *     summary: Delete the current user's account
+ *     description: >
+ *       Anonymizes the account (name, phone, email, password scrubbed) and removes
+ *       addresses, follows and push tokens. Order history is kept for accounting.
+ *       A linked chef profile is unlinked, not deleted, so the chef can still log in
+ *       with the same phone number. All existing tokens for this account stop working.
+ *     tags: [Users]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       204:
+ *         description: Account deleted
+ *       401:
+ *         description: Unauthorized
+ *       409:
+ *         description: User has orders in progress or an active Fuel subscription
+ */
+// DELETE /api/v1/users/profile
+usersRouter.delete('/profile', jwtAuth, async (req, res, next) => {
+  try {
+    const userId = await usersService.resolveAuthenticatedUserId(req.user);
+    await usersService.deleteAccount(userId);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
  * /users:
  *   get:
  *     summary: List all users (Admin only)

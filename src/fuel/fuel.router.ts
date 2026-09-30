@@ -11,7 +11,10 @@ import {
   UpdateFulfillmentStatusDto,
 } from './dto/fuel.dto';
 import { prisma } from '../prisma/prisma.service';
-import { batchProofUpload } from '../common/middleware/upload.middleware';
+import {
+  batchProofUpload,
+  mealImageUpload,
+} from '../common/middleware/upload.middleware';
 import { cloudinaryService } from '../common/services/cloudinary.service';
 import { fuelLiveService } from './fuel-live.service';
 import jwt from 'jsonwebtoken';
@@ -97,6 +100,88 @@ fuelRouter.get('/plans/:id', async (req, res, next) => {
     next(error);
   }
 });
+
+function parseMealTarget(body: any) {
+  const day = Number(body.day);
+  const period = String(body.period || '').trim();
+  if (!Number.isInteger(day) || day < 1 || !period) {
+    const error: any = new Error(
+      'day (positive integer) and period (e.g. breakfast, lunch, dinner) are required',
+    );
+    error.status = 400;
+    throw error;
+  }
+  return { day, period };
+}
+
+// POST /api/v1/fuel/plans/:id/meal-images (Admin)
+// multipart/form-data: day, period, images[] (up to 10)
+fuelRouter.post(
+  '/plans/:id/meal-images',
+  jwtAuth,
+  checkRoles(Role.ADMIN),
+  mealImageUpload.array('images', 10),
+  async (req: Request, res: Response, next) => {
+    try {
+      const { day, period } = parseMealTarget(req.body);
+      const files = (req.files as Express.Multer.File[]) || [];
+      if (!files.length) {
+        return res
+          .status(400)
+          .json({ status: 'error', message: 'At least one image is required' });
+      }
+      if (files.some((file) => !file.mimetype.startsWith('image/'))) {
+        return res
+          .status(400)
+          .json({ status: 'error', message: 'Only image files are allowed' });
+      }
+
+      const uploaded = await Promise.all(
+        files.map((file) =>
+          cloudinaryService.uploadFile(file, 'homey/fuel/meals'),
+        ),
+      );
+      const result = await fuelService.addMealImages(
+        req.params.id as string,
+        day,
+        period,
+        uploaded.map((upload) => upload.secure_url),
+      );
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// DELETE /api/v1/fuel/plans/:id/meal-images (Admin)
+// body: { day, period, image_url }
+fuelRouter.delete(
+  '/plans/:id/meal-images',
+  jwtAuth,
+  checkRoles(Role.ADMIN),
+  async (req, res, next) => {
+    try {
+      const { day, period } = parseMealTarget(req.body);
+      const imageUrl = String(req.body.image_url || '').trim();
+      if (!imageUrl) {
+        return res
+          .status(400)
+          .json({ status: 'error', message: 'image_url is required' });
+      }
+
+      const result = await fuelService.removeMealImage(
+        req.params.id as string,
+        day,
+        period,
+        imageUrl,
+      );
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // GET /api/v1/fuel/plans/:id/chefs?delivery_time_slot=13:00
 fuelRouter.get('/plans/:id/chefs', async (req, res, next) => {

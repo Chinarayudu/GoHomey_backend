@@ -94,11 +94,61 @@ function normalizeFuelPlanDuration(value: unknown) {
   return durationDays;
 }
 
+// Admin-uploaded photos for a menu meal, plus any legacy single image_url.
+function mealImages(meal: any): string[] {
+  const images = Array.isArray(meal?.images) ? meal.images : [];
+  const legacy = [meal?.image_url, meal?.image];
+  return [
+    ...new Set(
+      [...images, ...legacy].filter((url) => typeof url === 'string' && url),
+    ),
+  ];
+}
+
+// Guarantee every meal in menu_json exposes `images: string[]`.
+function withMealImages(menuJson: any) {
+  if (!menuJson || !Array.isArray(menuJson.days)) return menuJson;
+
+  return {
+    ...menuJson,
+    days: menuJson.days.map((day: any) => ({
+      ...day,
+      meals: Object.fromEntries(
+        Object.entries<any>(day?.meals || {}).map(([period, meal]) => [
+          period,
+          meal && typeof meal === 'object'
+            ? { ...meal, images: mealImages(meal) }
+            : meal,
+        ]),
+      ),
+    })),
+  };
+}
+
+function findMenuMeal(menuJson: any, dayNumber: number, period: string) {
+  const days = Array.isArray(menuJson?.days) ? menuJson.days : [];
+  const dayEntry =
+    days.find((d: any) => Number(d?.day) === dayNumber) ||
+    days[dayNumber - 1];
+  const meal = dayEntry?.meals?.[period];
+
+  if (!meal || typeof meal !== 'object') {
+    const error: any = new Error(
+      `No ${period} meal found for day ${dayNumber} in this plan's menu`,
+    );
+    error.status = 404;
+    throw error;
+  }
+
+  return meal;
+}
+
 function serializeFuelPlan(plan: any) {
   if (!plan) return plan;
 
   return {
     ...plan,
+    menu_json: withMealImages(plan.menu_json),
     duration_label:
       FUEL_PLAN_DURATION_LABELS[plan.duration_days] ||
       `${plan.duration_days} days`,
@@ -155,13 +205,14 @@ function resolveDailyMenu(
     days[index] || days.find((d: any) => Number(d.day) === index + 1) || null;
   if (!dayEntry) return null;
 
-  const meals = dayEntry.meals || {};
+  const meals = withMealImages({ days: [dayEntry] }).days[0].meals;
   const { period, meal } = resolveMealPeriodBySlot(meals, timeSlot);
 
   return {
     day_number: Number(dayEntry.day) || index + 1,
     period,
     item_name: meal?.name || null,
+    images: meal?.images || [],
     time_slot: meal?.time_slot || timeSlot,
     meals,
     nutrition: {
@@ -347,6 +398,58 @@ export class FuelService {
     }
 
     return serializeFuelPlan(plan);
+  }
+
+  async addMealImages(
+    planId: string,
+    dayNumber: number,
+    period: string,
+    imageUrls: string[],
+  ) {
+    const plan = await prisma.fuelPlan.findUnique({ where: { id: planId } });
+    if (!plan) {
+      const error: any = new Error('Fuel plan not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const menuJson: any = plan.menu_json;
+    const meal = findMenuMeal(menuJson, dayNumber, period);
+    meal.images = [...new Set([...mealImages(meal), ...imageUrls])];
+
+    const updated = await prisma.fuelPlan.update({
+      where: { id: planId },
+      data: { menu_json: menuJson },
+    });
+
+    return serializeFuelPlan(updated);
+  }
+
+  async removeMealImage(
+    planId: string,
+    dayNumber: number,
+    period: string,
+    imageUrl: string,
+  ) {
+    const plan = await prisma.fuelPlan.findUnique({ where: { id: planId } });
+    if (!plan) {
+      const error: any = new Error('Fuel plan not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const menuJson: any = plan.menu_json;
+    const meal = findMenuMeal(menuJson, dayNumber, period);
+    meal.images = mealImages(meal).filter((url) => url !== imageUrl);
+    if (meal.image_url === imageUrl) delete meal.image_url;
+    if (meal.image === imageUrl) delete meal.image;
+
+    const updated = await prisma.fuelPlan.update({
+      where: { id: planId },
+      data: { menu_json: menuJson },
+    });
+
+    return serializeFuelPlan(updated);
   }
 
   async listChefsForPlan(planId: string, deliveryTimeSlot?: string) {
