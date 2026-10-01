@@ -1,3 +1,6 @@
+// Load .env here so values are available no matter which module imports this first.
+import 'dotenv/config';
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {

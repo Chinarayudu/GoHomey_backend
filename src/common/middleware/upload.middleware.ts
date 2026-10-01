@@ -39,3 +39,19 @@ export const batchProofUpload = multer({
     fileSize: 5 * 1024 * 1024, // 5MB max for batch proof
   },
 });
+
+const imageOnlyFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only JPEG, PNG, and WebP images are allowed.'));
+  }
+};
+
+export const adminImageUpload = multer({
+  storage,
+  fileFilter: imageOnlyFileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max for admin portal images
+  },
+});

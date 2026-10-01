@@ -4,6 +4,8 @@ import { deliveryService } from '../delivery/delivery.service';
 import { jwtAuth, checkRoles } from '../common/middleware/auth.middleware';
 import { Role } from '@prisma/client';
 import type { ShadowfaxSandboxAction } from '../delivery/shadowfax.client';
+import { adminImageUpload } from '../common/middleware/upload.middleware';
+import { cloudinaryService } from '../common/services/cloudinary.service';
 
 const adminRouter = Router();
 const shadowfaxSandboxActions = new Set<ShadowfaxSandboxAction>([
@@ -166,6 +168,95 @@ adminRouter.patch('/payouts/:id/status', async (req, res, next) => {
     next(error);
   }
 });
+
+// --- Uploads ---
+
+const DEFAULT_ADMIN_UPLOAD_FOLDER = 'homey/admin';
+// Folders must stay under homey/ and use only safe path segments.
+const ADMIN_UPLOAD_FOLDER_PATTERN = /^homey(\/[a-z0-9_-]+)+$/i;
+
+/**
+ * @openapi
+ * /admin/uploads:
+ *   post:
+ *     summary: Upload an image to Cloudinary and get its URL (Admin only)
+ *     description: >-
+ *       Generic image upload for the admin portal (e.g. Fuel plan meal images
+ *       before the plan is created). Put the returned `url` into the payload
+ *       of the follow-up request, such as `menu_json.days[].meals.<period>.image_url`.
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [image]
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: JPEG, PNG or WebP, max 5 MB
+ *               folder:
+ *                 type: string
+ *                 example: homey/fuel-meals
+ *                 description: Optional Cloudinary folder under homey/. Defaults to homey/admin.
+ *     responses:
+ *       201:
+ *         description: Image uploaded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 url: { type: string }
+ *                 public_id: { type: string }
+ *       400:
+ *         description: Missing/invalid file, file too large, or invalid folder
+ */
+// POST /api/v1/admin/uploads
+adminRouter.post(
+  '/uploads',
+  (req, res, next) => {
+    adminImageUpload.single('image')(req, res, (err: any) => {
+      if (err) {
+        err.status = 400;
+        if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Image must be 5 MB or smaller';
+      }
+      next(err);
+    });
+  },
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ status: 'error', message: 'image file is required' });
+      }
+
+      const rawFolder =
+        typeof req.body?.folder === 'string' ? req.body.folder.trim() : '';
+      const folder = rawFolder || DEFAULT_ADMIN_UPLOAD_FOLDER;
+      if (!ADMIN_UPLOAD_FOLDER_PATTERN.test(folder)) {
+        return res.status(400).json({
+          status: 'error',
+          message:
+            'Invalid folder. Use a path under homey/ with letters, numbers, - or _ (e.g. homey/fuel-meals)',
+        });
+      }
+
+      const uploaded = await cloudinaryService.uploadFile(req.file, folder);
+      res.status(201).json({
+        url: uploaded.secure_url,
+        public_id: uploaded.public_id,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // --- Order Management ---
 
