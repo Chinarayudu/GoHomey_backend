@@ -104,6 +104,8 @@ export function startOfIstMonth(now: Date = new Date()): Date {
   );
 }
 
+export type WalletAdjustmentEntry = { amount: number; created_at: Date };
+
 export type WalletSummary = {
   wallet_balance: number;
   pending_balance: number;
@@ -116,6 +118,7 @@ export type WalletSummary = {
  *   + earning when an order is delivered
  *   − amount when a withdrawal is requested (held)
  *   + amount when that withdrawal is rejected (released)
+ *   ± amount for a manual admin adjustment (a debit only takes what's there)
  *   − earning when a delivered order is later cancelled/refunded, but only up
  *     to the balance not yet withdrawn (no clawback: the balance never goes
  *     negative and withdrawn money is never taken back).
@@ -128,6 +131,7 @@ export function computeWallet(
   withdrawals: WalletWithdrawal[],
   platformFee: number,
   now: Date = new Date(),
+  adjustments: WalletAdjustmentEntry[] = [],
 ): WalletSummary {
   type Event = { at: number; delta: number; clamp: boolean };
   const events: Event[] = [];
@@ -162,6 +166,10 @@ export function computeWallet(
       const releasedAt = (w.reviewed_at ?? w.created_at).getTime();
       events.push({ at: releasedAt, delta: w.amount, clamp: false });
     }
+  }
+
+  for (const a of adjustments) {
+    events.push({ at: a.created_at.getTime(), delta: a.amount, clamp: a.amount < 0 });
   }
 
   // Credits before debits at the same instant, so ordering ties never strand money.

@@ -200,6 +200,7 @@ model Chef {
   orders             Order[]
   payouts            ChefPayout[]
   withdrawals        Withdrawal[]
+  wallet_adjustments WalletAdjustment[]
 }
 
 model Follow {
@@ -528,4 +529,18 @@ model WithdrawalEvent {
   created_at    DateTime          @default(now())
 
   @@index([withdrawal_id, created_at])
+}
+
+// Manual admin credit (positive) or debit (negative) to a chef's wallet, e.g. a
+// goodwill top-up. Added into wallet_balance; not counted as month_earnings.
+model WalletAdjustment {
+  id         String   @id @default(uuid())
+  chef_id    String
+  chef       Chef     @relation(fields: [chef_id], references: [id])
+  amount     Float
+  reason     String
+  created_by String // admin user id
+  created_at DateTime @default(now())
+
+  @@index([chef_id, created_at])
 }

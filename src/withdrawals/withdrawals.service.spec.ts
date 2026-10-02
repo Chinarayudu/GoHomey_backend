@@ -13,6 +13,7 @@ jest.mock('../prisma/prisma.service', () => {
       groupBy: jest.fn(),
     },
     withdrawalEvent: { create: jest.fn() },
+    walletAdjustment: { findMany: jest.fn() },
   };
   return {
     prisma: { ...tx, $transaction: jest.fn((fn: any) => fn(tx)) },
@@ -57,6 +58,7 @@ function happyPath() {
   db.withdrawal.count.mockResolvedValue(0);
   db.order.findMany.mockResolvedValue(deliveredOrders);
   db.withdrawal.findMany.mockResolvedValue([]);
+  db.walletAdjustment.findMany.mockResolvedValue([]);
   db.withdrawal.create.mockImplementation(({ data }: any) =>
     Promise.resolve({
       id: 'wd-1',
@@ -154,6 +156,15 @@ describe('WithdrawalsService.create', () => {
     ]);
     await expect(withdrawalsService.create('chef-1', 3001)).rejects.toMatchObject({ status: 400 });
     await expect(withdrawalsService.create('chef-1', 3000)).resolves.toMatchObject({ replayed: false });
+  });
+
+  it('counts a manual wallet adjustment toward the balance', async () => {
+    db.order.findMany.mockResolvedValue([]);
+    db.walletAdjustment.findMany.mockResolvedValue([
+      { amount: 2000, created_at: new Date('2026-09-01T00:00:00Z') },
+    ]);
+    await expect(withdrawalsService.create('chef-1', 2001)).rejects.toMatchObject({ status: 400 });
+    await expect(withdrawalsService.create('chef-1', 2000)).resolves.toMatchObject({ replayed: false });
   });
 
   it('returns 409 when a PENDING or APPROVED request is already open', async () => {

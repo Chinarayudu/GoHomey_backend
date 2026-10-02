@@ -64,7 +64,7 @@ function generateReference(now: Date = new Date()): string {
 
 export class WithdrawalsService {
   async getWallet(chefId: string, db: Db = prisma, now: Date = new Date()) {
-    const [orders, withdrawals] = await Promise.all([
+    const [orders, withdrawals, adjustments] = await Promise.all([
       db.order.findMany({
         where: { chef_id: chefId },
         include: walletOrderInclude,
@@ -78,12 +78,17 @@ export class WithdrawalsService {
           reviewed_at: true,
         },
       }),
+      db.walletAdjustment.findMany({
+        where: { chef_id: chefId },
+        select: { amount: true, created_at: true },
+      }),
     ]);
     return computeWallet(
       orders as any,
       withdrawals,
       resolvePlatformFeeRupees(),
       now,
+      adjustments,
     );
   }
 

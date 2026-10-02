@@ -190,6 +190,22 @@ describe('computeWallet', () => {
     expect(w.wallet_balance).toBe(0);
   });
 
+  it('adds manual adjustments to the balance but not to month_earnings', () => {
+    const w = computeWallet(
+      [],
+      [wd({ amount: 1500, status: 'PAID', created_at: t('2026-10-06T00:00:00Z') })],
+      20,
+      NOW,
+      [
+        { amount: 2000, created_at: t('2026-10-05T00:00:00Z') },
+        { amount: -800, created_at: t('2026-10-07T00:00:00Z') }, // only 500 left to take
+      ],
+    );
+    expect(w.wallet_balance).toBe(0);
+    expect(w.month_earnings).toBe(0);
+    expect(computeWallet([], [], 20, NOW, [{ amount: 2000, created_at: t('2026-10-05T00:00:00Z') }]).wallet_balance).toBe(2000);
+  });
+
   it('month_earnings counts only delivered earnings in the current IST month', () => {
     const w = computeWallet(
       [
