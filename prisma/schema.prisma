@@ -313,13 +313,23 @@ model PantryItem {
   chef       Chef     @relation(fields: [chef_id], references: [id])
   name       String
   category   String
+  // ITEM: price per item. CONTAINER: price for the whole container.
   price      Float
+  // Sellable units: items for ITEM, whole containers for CONTAINER.
   inventory  Int
   image_url  String?
+  unit_type       PantryUnitType @default(ITEM)
+  // Pieces in one container; always 1 for ITEM.
+  pieces_per_unit Int            @default(1)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
   order_items OrderItem[]
+}
+
+enum PantryUnitType {
+  ITEM
+  CONTAINER
 }
 
 model SocialEvent {
@@ -380,6 +390,9 @@ model OrderItem {
   daily_meal                           DailyMeal?        @relation(fields: [daily_meal_id], references: [id])
   pantry_id                            String?
   pantry_item                          PantryItem?       @relation(fields: [pantry_id], references: [id])
+  // Pantry unit at order time, so later item edits don't change past orders.
+  pantry_unit_type                     PantryUnitType?
+  pantry_pieces_per_unit               Int?
   fuel_slot_id                         String?
   fuel_slot                            FuelSlot?         @relation(fields: [fuel_slot_id], references: [id])
   fuel_subscription_id                 String?           @unique

@@ -3,10 +3,15 @@ import { ordersQueue } from '../common/queues/queues';
 import { paymentsService } from '../payments/payments.service';
 import {
   ChefApplicationStatus,
+  DailyMeal,
   FuelSubscriptionStatus,
+  OrderStatus,
   Prisma,
 } from '@prisma/client';
-import { isServiceWindowOpen } from '../common/utils/time';
+import {
+  isServiceWindowOpen,
+  mealDeliveryDeadline,
+} from '../common/utils/time';
 import { calculateDistance, DELIVERY_RADIUS_KM } from '../common/utils/location';
 
 type CheckoutItemType =
@@ -122,6 +127,34 @@ function addOrderAmountBreakdown<
     platform_fee: platformFee,
     payable_amount: payableAmount,
   };
+}
+
+const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  'PENDING',
+  'CONFIRMED',
+  'PREPARING',
+  'READY_FOR_PICKUP',
+  'OUT_FOR_DELIVERY',
+];
+
+// How long after its delivery deadline an un-updated order stops being "active".
+const OVERDUE_GRACE_MS = 2 * 60 * 60 * 1000;
+
+// Latest time an order should have been delivered by, from its scheduled items.
+// Pantry and Fuel orders have no single delivery time, so they never go overdue.
+function orderDeliveryDeadline(order: {
+  items: Array<{
+    daily_meal?: Pick<DailyMeal, 'date' | 'service_window'> | null;
+    social_event?: { end_date: Date } | null;
+  }>;
+}): Date | null {
+  const deadlines = order.items.flatMap((item) => {
+    if (item.daily_meal) return [mealDeliveryDeadline(item.daily_meal)];
+    if (item.social_event) return [new Date(item.social_event.end_date)];
+    return [];
+  });
+  if (!deadlines.length) return null;
+  return new Date(Math.max(...deadlines.map((date) => date.getTime())));
 }
 
 export class OrdersService {
@@ -359,6 +392,8 @@ export class OrdersService {
               item_id: item.id,
               quantity,
               price: item.price,
+              pantry_unit_type: item.unit_type,
+              pantry_pieces_per_unit: item.pieces_per_unit,
             },
           },
           delivery: {
@@ -419,26 +454,10 @@ export class OrdersService {
   }
 
   async findChefOrders(chefId: string, statusGroup?: 'active' | 'completed') {
-    let where: any = { chef_id: chefId };
-
-    if (statusGroup === 'active') {
-      where.status = {
-        in: [
-          'PENDING',
-          'CONFIRMED',
-          'PREPARING',
-          'READY_FOR_PICKUP',
-          'OUT_FOR_DELIVERY',
-        ],
-      };
-    } else if (statusGroup === 'completed') {
-      where.status = {
-        in: ['DELIVERED', 'CANCELLED', 'REFUNDED'],
-      };
-    }
-
-    return prisma.order.findMany({
-      where,
+    // Overdue orders keep their status but count as completed, so statusGroup
+    // can't be a plain DB filter: fetch, flag overdue, then split.
+    const orders = await prisma.order.findMany({
+      where: { chef_id: chefId },
       include: {
         items: {
           include: {
@@ -460,6 +479,35 @@ export class OrdersService {
       },
       orderBy: { created_at: 'desc' },
     });
+
+    const now = Date.now();
+    const flagged = orders.map((order) => {
+      const expectedDeliveryBy = orderDeliveryDeadline(order);
+      const isOverdue =
+        ACTIVE_ORDER_STATUSES.includes(order.status) &&
+        !!expectedDeliveryBy &&
+        expectedDeliveryBy.getTime() + OVERDUE_GRACE_MS < now;
+
+      return {
+        ...order,
+        expected_delivery_by: expectedDeliveryBy,
+        is_overdue: isOverdue,
+      };
+    });
+
+    if (statusGroup === 'active') {
+      return flagged.filter(
+        (order) =>
+          ACTIVE_ORDER_STATUSES.includes(order.status) && !order.is_overdue,
+      );
+    }
+    if (statusGroup === 'completed') {
+      return flagged.filter(
+        (order) =>
+          !ACTIVE_ORDER_STATUSES.includes(order.status) || order.is_overdue,
+      );
+    }
+    return flagged;
   }
 
   async checkout(
@@ -666,6 +714,10 @@ export class OrdersService {
           // Map to specific schema fields
           daily_meal_id: itemType === 'DAILY_MEAL' ? itemRequest.id : null,
           pantry_id: itemType === 'PANTRY_ITEM' ? itemRequest.id : null,
+          pantry_unit_type:
+            itemType === 'PANTRY_ITEM' ? itemData.unit_type : null,
+          pantry_pieces_per_unit:
+            itemType === 'PANTRY_ITEM' ? itemData.pieces_per_unit : null,
           social_event_id: itemType === 'SOCIAL_EVENT' ? itemRequest.id : null,
           fuel_slot_id: itemType === 'FUEL_PLAN' ? fuelSlotId : null,
           fuel_subscription_start_date:
@@ -703,6 +755,8 @@ export class OrdersService {
                 price: item.price,
                 daily_meal_id: item.daily_meal_id,
                 pantry_id: item.pantry_id,
+                pantry_unit_type: item.pantry_unit_type,
+                pantry_pieces_per_unit: item.pantry_pieces_per_unit,
                 social_event_id: item.social_event_id,
                 fuel_slot_id: item.fuel_slot_id,
                 fuel_subscription_start_date: item.fuel_subscription_start_date,

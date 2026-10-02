@@ -23,6 +23,19 @@ function coercePantryFields(req: Request, _res: Response, next: any) {
     req.body.inventory = Number(req.body.inventory);
   }
 
+  // Multipart sends every value as a string; an empty string means "not sent".
+  if (req.body.unit_type === '' || req.body.unit_type === null) {
+    delete req.body.unit_type;
+  } else if (typeof req.body.unit_type === 'string') {
+    req.body.unit_type = req.body.unit_type.trim().toUpperCase();
+  }
+
+  if (req.body.pieces_per_unit === '' || req.body.pieces_per_unit === null) {
+    delete req.body.pieces_per_unit;
+  } else if (req.body.pieces_per_unit !== undefined) {
+    req.body.pieces_per_unit = Number(req.body.pieces_per_unit);
+  }
+
   next();
 }
 

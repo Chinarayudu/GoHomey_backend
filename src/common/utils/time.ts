@@ -43,3 +43,37 @@ export function isServiceWindowOpen(meal: DailyMeal): boolean {
 
   return currentTimeInMinutes < cutoff;
 }
+
+// Latest IST wall-clock time a meal in each service window should be delivered by,
+// in minutes since midnight. Unknown windows fall back to the end of the day.
+const SERVICE_WINDOW_DELIVERY_END_IST: Record<string, number> = {
+  BREAKFAST: 10 * 60, // 10:00 AM IST
+  LUNCH: 15 * 60, // 3:00 PM IST
+  DINNER: 22 * 60, // 10:00 PM IST
+};
+const END_OF_DAY_IST = 23 * 60 + 59;
+
+/**
+ * UTC instant by which a daily meal should have been delivered. The app sends
+ * `meal.date` as an arbitrary time on the meal's day (often "now"), so the day
+ * is taken in IST; the window's delivery end is applied as IST wall-clock time.
+ */
+export function mealDeliveryDeadline(
+  meal: Pick<DailyMeal, 'date' | 'service_window'>,
+): Date {
+  const mealDate = new Date(
+    new Date(meal.date).getTime() + IST_OFFSET_MINUTES * 60 * 1000,
+  );
+  const endMinutes =
+    SERVICE_WINDOW_DELIVERY_END_IST[meal.service_window?.toUpperCase() ?? ''] ??
+    END_OF_DAY_IST;
+
+  const istWallClockAsUtc = Date.UTC(
+    mealDate.getUTCFullYear(),
+    mealDate.getUTCMonth(),
+    mealDate.getUTCDate(),
+    0,
+    endMinutes,
+  );
+  return new Date(istWallClockAsUtc - IST_OFFSET_MINUTES * 60 * 1000);
+}

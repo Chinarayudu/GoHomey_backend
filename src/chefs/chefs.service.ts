@@ -5,6 +5,7 @@ import { isServiceWindowOpen } from '../common/utils/time';
 import { calculateDistance } from '../common/utils/location';
 import { lookupIfsc } from '../common/services/bank.service';
 import { publicChefSelect } from './chef.select';
+import { serializePantryItem } from '../pantry/pantry.service';
 
 const privateChefProfileSelect = {
   ...publicChefSelect,
@@ -399,7 +400,7 @@ export class ChefsService {
     }));
 
     const pantry = pantryItems.map((item) => ({
-      ...item,
+      ...serializePantryItem(item),
       catalog_type: 'PANTRY_ITEM',
       ...this.getPantryCatalogState(item),
     }));
