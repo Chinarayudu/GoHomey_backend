@@ -91,15 +91,15 @@ enum FuelFulfillmentStatus {
 }
 
 model User {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   name       String
-  phone      String   @unique
-  email      String   @unique
+  phone      String    @unique
+  email      String    @unique
   password   String
-  role       Role     @default(USER)
-  gender     Gender?  @default(OTHER)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  role       Role      @default(USER)
+  gender     Gender?   @default(OTHER)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
   deleted_at DateTime? // Set when the user deletes their account; PII is scrubbed, orders are kept
 
   dietary_preference DietaryPreference @default(BOTH)
@@ -182,6 +182,7 @@ model Chef {
   bank_name           String?
   bank_account_number String?
   ifsc_code           String?
+  bank_holder_name    String?
 
   // Registration tracking
   application_status ChefApplicationStatus @default(DRAFT)
@@ -198,6 +199,7 @@ model Chef {
   social_events      SocialEvent[]
   orders             Order[]
   payouts            ChefPayout[]
+  withdrawals        Withdrawal[]
 }
 
 model Follow {
@@ -308,21 +310,21 @@ model FuelDailyFulfillment {
 }
 
 model PantryItem {
-  id         String   @id @default(uuid())
-  chef_id    String
-  chef       Chef     @relation(fields: [chef_id], references: [id])
-  name       String
-  category   String
+  id              String         @id @default(uuid())
+  chef_id         String
+  chef            Chef           @relation(fields: [chef_id], references: [id])
+  name            String
+  category        String
   // ITEM: price per item. CONTAINER: price for the whole container.
-  price      Float
+  price           Float
   // Sellable units: items for ITEM, whole containers for CONTAINER.
-  inventory  Int
-  image_url  String?
+  inventory       Int
+  image_url       String?
   unit_type       PantryUnitType @default(ITEM)
   // Pieces in one container; always 1 for ITEM.
   pieces_per_unit Int            @default(1)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
 
   order_items OrderItem[]
 }
@@ -471,4 +473,59 @@ model Delivery {
   status                DeliveryStatus   @default(PENDING)
   created_at            DateTime         @default(now())
   updated_at            DateTime         @updatedAt
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+// Chef-raised withdrawal request. Admin reviews it and transfers the money by
+// hand; there is no gateway call. The amount is held (left out of the chef's
+// wallet balance) from creation until the request is REJECTED.
+model Withdrawal {
+  id                  String           @id @default(uuid())
+  chef_id             String
+  chef                Chef             @relation(fields: [chef_id], references: [id])
+  reference           String           @unique // e.g. WD-20826-4471
+  amount              Float
+  status              WithdrawalStatus @default(PENDING)
+  // Bank snapshot at request time, so later profile edits don't change it.
+  account_label       String // e.g. "Canara Bank •••• 9807"
+  bank_holder_name    String
+  bank_name           String?
+  bank_account_number String
+  ifsc_code           String
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+  reviewed_at         DateTime?
+  reviewed_by         String? // admin user id
+  paid_at             DateTime?
+  utr                 String?
+  rejection_reason    String?
+  rejection_details   String?
+  idempotency_key     String?
+
+  events WithdrawalEvent[]
+
+  @@unique([chef_id, idempotency_key])
+  @@index([chef_id, created_at])
+  @@index([status, created_at])
+}
+
+// Audit log: one row per status change, including creation (from_status null).
+model WithdrawalEvent {
+  id            String            @id @default(uuid())
+  withdrawal_id String
+  withdrawal    Withdrawal        @relation(fields: [withdrawal_id], references: [id])
+  from_status   WithdrawalStatus?
+  to_status     WithdrawalStatus
+  actor_role    Role
+  actor_id      String
+  note          String?
+  created_at    DateTime          @default(now())
+
+  @@index([withdrawal_id, created_at])
 }

@@ -62,4 +62,13 @@ describe('UpdateChefProfileDto', () => {
     const { errors: alpha } = await check({ bank_account_number: 'ABCD12345' });
     expect(alpha.map((e) => e.property)).toContain('bank_account_number');
   });
+
+  it('keeps bank_holder_name (trimmed) instead of stripping it', async () => {
+    const { dto, errors } = await check({ bank_holder_name: '  Lakshmi Devi ' });
+    expect(errors).toHaveLength(0);
+    expect(dto.bank_holder_name).toBe('Lakshmi Devi');
+
+    const { errors: blank } = await check({ bank_holder_name: '   ' });
+    expect(blank.map((e) => e.property)).toContain('bank_holder_name');
+  });
 });

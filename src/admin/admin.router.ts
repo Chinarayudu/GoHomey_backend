@@ -6,6 +6,7 @@ import { Role } from '@prisma/client';
 import type { ShadowfaxSandboxAction } from '../delivery/shadowfax.client';
 import { adminImageUpload } from '../common/middleware/upload.middleware';
 import { cloudinaryService } from '../common/services/cloudinary.service';
+import { withdrawalsService } from '../withdrawals/withdrawals.service';
 
 const adminRouter = Router();
 const shadowfaxSandboxActions = new Set<ShadowfaxSandboxAction>([
@@ -502,6 +503,115 @@ adminRouter.patch('/orders/:id/status', async (req, res, next) => {
     const { status } = req.body;
     const result = await adminService.updateOrderStatus(req.params.id, status);
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// --- Chef Withdrawals ---
+
+/**
+ * @openapi
+ * /admin/withdrawals:
+ *   get:
+ *     summary: List chef withdrawal requests (Admin only)
+ *     description: >-
+ *       Each item carries the full bank snapshot and a `chef` block with the
+ *       chef's current wallet_balance and completed (PAID) withdrawal count.
+ *       `counts` gives per-status totals for tabs.
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [PENDING, APPROVED, PAID, REJECTED, ALL] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 100 }
+ *     responses:
+ *       200:
+ *         description: "{ status, data: { items, counts, pagination } }"
+ */
+adminRouter.get('/withdrawals', async (req, res, next) => {
+  try {
+    const data = await withdrawalsService.adminList(req.query as any);
+    res.json({ status: 'success', data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /admin/withdrawals/{id}:
+ *   get:
+ *     summary: Withdrawal detail with audit history (Admin only)
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Withdrawal with `history`
+ *       404:
+ *         description: Not found
+ */
+adminRouter.get('/withdrawals/:id', async (req, res, next) => {
+  try {
+    const data = await withdrawalsService.adminGet(req.params.id);
+    res.json({ status: 'success', data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /admin/withdrawals/{id}/status:
+ *   patch:
+ *     summary: Approve, mark paid, or reject a withdrawal (Admin only)
+ *     description: >-
+ *       PENDING → APPROVED → PAID (utr required). PENDING or APPROVED → REJECTED
+ *       (reason required; the amount returns to the chef's wallet). Any other
+ *       transition returns 409.
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status: { type: string, enum: [APPROVED, PAID, REJECTED] }
+ *               utr: { type: string }
+ *               reason: { type: string }
+ *               details: { type: string }
+ *     responses:
+ *       200:
+ *         description: Updated withdrawal with history
+ *       400:
+ *         description: Missing status / utr / reason
+ *       409:
+ *         description: Transition not allowed from the current status
+ */
+adminRouter.patch('/withdrawals/:id/status', async (req, res, next) => {
+  try {
+    const data = await withdrawalsService.adminUpdateStatus(
+      req.params.id,
+      (req.user as any).id,
+      req.body,
+    );
+    res.json({ status: 'success', data });
   } catch (error) {
     next(error);
   }

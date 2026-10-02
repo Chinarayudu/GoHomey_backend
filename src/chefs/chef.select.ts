@@ -8,7 +8,7 @@ import { Prisma } from '@prisma/client';
  * certificate is surfaced to customers as a trust signal.
  *
  * Intentionally EXCLUDES `password`, `government_id_url`, `bank_name`,
- * `bank_account_number`, `ifsc_code`. Never widen this to add those — use
+ * `bank_account_number`, `ifsc_code`, `bank_holder_name`. Never widen this to add those — use
  * `privateChefProfileSelect` (chefs.service.ts), which is only returned to the
  * chef themselves.
  */

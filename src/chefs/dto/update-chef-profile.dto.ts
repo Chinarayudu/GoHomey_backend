@@ -77,6 +77,12 @@ export class UpdateChefProfileDto {
   bank_name?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  bank_holder_name?: string;
+
+  @IsOptional()
   // Strip spaces and dashes anywhere in the value (e.g. "1234 5678 9012",
   // "1234-5678-9012") before validating — the frontend does not need to sanitize.
   @Transform(({ value }) =>

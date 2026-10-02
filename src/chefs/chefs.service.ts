@@ -12,6 +12,7 @@ const privateChefProfileSelect = {
   bank_name: true,
   bank_account_number: true,
   ifsc_code: true,
+  bank_holder_name: true,
   government_id_url: true,
 };
 
@@ -565,6 +566,7 @@ export class ChefsService {
       bank_name: data.bank_name,
       bank_account_number: data.bank_account_number,
       ifsc_code: data.ifsc_code,
+      bank_holder_name: data.bank_holder_name,
     };
 
     if (data.ifsc_code) {

@@ -10,6 +10,7 @@ import { chefDocumentUpload } from '../common/middleware/upload.middleware';
 import { cloudinaryService } from '../common/services/cloudinary.service';
 import { Role } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
+import { withdrawalsService, toChefWithdrawal } from '../withdrawals/withdrawals.service';
 const chefsRouter = Router();
 
 async function resolveChefForUser(user: any) {
@@ -413,6 +414,7 @@ chefsRouter.get(
  *               max_capacity: { type: integer }
  *               appliances: { type: array, items: { type: string } }
  *               bank_name: { type: string }
+ *               bank_holder_name: { type: string }
  *               bank_account_number:
  *                 type: string
  *                 description: 9–18 digits
@@ -512,6 +514,122 @@ chefsRouter.get(
       next(error);
     }
   }
+);
+
+// ─── WALLET & WITHDRAWALS ─────────────────────────────────────────────────────
+// Registered before GET /:id, which would otherwise swallow /wallet and /withdrawals.
+
+/**
+ * @openapi
+ * /chefs/wallet:
+ *   get:
+ *     summary: Chef wallet balances
+ *     description: >-
+ *       wallet_balance = delivered earnings − PENDING/APPROVED/PAID withdrawals.
+ *       pending_balance = earnings on orders still in progress.
+ *       month_earnings = delivered earnings this calendar month (IST).
+ *     tags: [Chef Wallet]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: "{ wallet_balance, pending_balance, month_earnings, platform_fee_flat }"
+ */
+chefsRouter.get(
+  '/wallet',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req, res, next) => {
+    try {
+      const chef = await resolveChefForUser(req.user as any);
+      if (!chef) {
+        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
+      }
+      const data = await withdrawalsService.getWallet(chef.id);
+      res.json({ status: 'success', data });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /chefs/withdrawals:
+ *   get:
+ *     summary: The chef's own withdrawal requests, newest first
+ *     tags: [Chef Wallet]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of withdrawals
+ *   post:
+ *     summary: Request a withdrawal (held from wallet_balance until paid or rejected)
+ *     tags: [Chef Wallet]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         schema: { type: string }
+ *         description: Repeating a key returns the original withdrawal instead of creating another.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amount]
+ *             properties:
+ *               amount: { type: number, example: 2000 }
+ *     responses:
+ *       201:
+ *         description: Withdrawal created (or replayed for a repeated Idempotency-Key)
+ *       400:
+ *         description: Below minimum, above balance, weekly limit, or missing bank details / approval
+ *       409:
+ *         description: Another withdrawal is already PENDING or APPROVED
+ */
+chefsRouter.get(
+  '/withdrawals',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req, res, next) => {
+    try {
+      const chef = await resolveChefForUser(req.user as any);
+      if (!chef) {
+        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
+      }
+      const data = await withdrawalsService.listForChef(chef.id);
+      res.json({ status: 'success', data });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+chefsRouter.post(
+  '/withdrawals',
+  jwtAuth,
+  checkRoles(Role.CHEF),
+  async (req, res, next) => {
+    try {
+      const chef = await resolveChefForUser(req.user as any);
+      if (!chef) {
+        return res.status(403).json({ status: 'error', message: 'Chef profile not found' });
+      }
+      const { withdrawal, replayed } = await withdrawalsService.create(
+        chef.id,
+        req.body?.amount,
+        req.get('Idempotency-Key'),
+      );
+      if (replayed) res.set('Idempotent-Replayed', 'true');
+      res.status(201).json({ status: 'success', data: toChefWithdrawal(withdrawal) });
+    } catch (error) {
+      next(error);
+    }
+  },
 );
 
 // ─── EXISTING CHEF ENDPOINTS ──────────────────────────────────────────────────
