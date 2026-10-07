@@ -221,9 +221,37 @@ async function processShadowfaxWebhook(
   }
 }
 
+function maskPhone(value: unknown): unknown {
+  if (typeof value !== 'string' || value.length < 4) return value;
+  return `${'*'.repeat(value.length - 4)}${value.slice(-4)}`;
+}
+
+/** Raw callback body for the logs, with the rider's phone number masked. */
+function sanitizeShadowfaxPayload(body: any) {
+  if (!body || typeof body !== 'object') return body;
+  const { rider_contact, ...rest } = body;
+  return rider_contact === undefined
+    ? rest
+    : { ...rest, rider_contact: maskPhone(rider_contact) };
+}
+
 function handleShadowfaxWebhook(req: any, res: any) {
+  const requestMeta = {
+    method: req.method,
+    ip: req.ip,
+    user_agent: req.headers['user-agent'],
+  };
+
+  console.log('[Shadowfax Webhook] incoming request', {
+    ...requestMeta,
+    payload: sanitizeShadowfaxPayload(req.body),
+  });
+
   if (!verifyShadowfaxWebhookSecret(req)) {
-    console.error('[Shadowfax Webhook] secret verification failed!');
+    console.error('[Shadowfax Webhook] secret verification failed', {
+      ...requestMeta,
+      secret_header_present: Boolean(req.headers['x-shadowfax-webhook-secret']),
+    });
     return res.status(401).json({ error: 'Invalid or missing webhook secret' });
   }
 
@@ -232,6 +260,11 @@ function handleShadowfaxWebhook(req: any, res: any) {
   );
 
   if (!coid) {
+    console.warn('[Shadowfax Webhook] rejected callback: no order identifier', {
+      ...requestMeta,
+      provider_status: status,
+      status_code: 400,
+    });
     return res.status(400).json({
       error: 'Invalid payload: order identifier is required',
     });
@@ -253,7 +286,12 @@ function handleShadowfaxWebhook(req: any, res: any) {
   });
 
   processShadowfaxWebhook(coid, sfxOrderId, status, trackingUrl).catch((error) => {
-    console.error('Shadowfax webhook processing error:', error);
+    console.error('[Shadowfax Webhook] processing error', {
+      coid,
+      sfx_order_id: sfxOrderId,
+      provider_status: status,
+      error: error instanceof Error ? error.stack || error.message : error,
+    });
   });
 }
 
