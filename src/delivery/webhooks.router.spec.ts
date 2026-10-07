@@ -96,16 +96,41 @@ describe('Shadowfax Marketplace callbacks (payloads from Shadowfax callback doc)
     rider_name: 'Shashank Arya',
     rider_contact: '7992362908',
     rider_id: 139468,
+    rider_latitude: 12.899985,
+    rider_longitude: 77.6178,
+    pickup_eta: 44,
+    drop_eta: 70,
     client_order_id: 'order_111288',
     allot_time: '2026-06-23T10:23:10.000000Z',
     track_url: 'https://track.shadowfax.in/abc123',
   };
 
+  const NOW = new Date('2026-06-23T10:23:10.000Z');
+  const minutesFromNow = (minutes: number) =>
+    new Date(NOW.getTime() + minutes * 60_000);
+
   beforeEach(() => {
     delete process.env.SHADOWFAX_WEBHOOK_SECRET;
+    // Fake only Date so supertest and setImmediate keep working.
+    jest.useFakeTimers({
+      now: NOW,
+      doNotFake: [
+        'nextTick',
+        'setImmediate',
+        'setTimeout',
+        'setInterval',
+        'clearTimeout',
+        'clearInterval',
+        'queueMicrotask',
+      ],
+    });
   });
 
-  it('matches on client_order_id or sfx_order_id and saves track_url', async () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('matches on client_order_id or sfx_order_id and saves track_url, rider and ETAs', async () => {
     mockPrisma.delivery.findFirst.mockResolvedValue({
       id: 'del-1',
       status: 'ASSIGNED',
@@ -129,7 +154,17 @@ describe('Shadowfax Marketplace callbacks (payloads from Shadowfax callback doc)
     });
     expect(mockPrisma.delivery.update).toHaveBeenCalledWith({
       where: { id: 'del-1' },
-      data: { external_tracking_url: 'https://track.shadowfax.in/abc123' },
+      data: {
+        external_tracking_url: 'https://track.shadowfax.in/abc123',
+        rider_name: 'Shashank Arya',
+        rider_phone: '7992362908',
+        rider_latitude: 12.899985,
+        rider_longitude: 77.6178,
+        pickup_eta_at: minutesFromNow(44),
+        drop_eta_at: minutesFromNow(70),
+        provider_status: 'ALLOTTED',
+        provider_updated_at: NOW,
+      },
     });
   });
 
@@ -153,7 +188,65 @@ describe('Shadowfax Marketplace callbacks (payloads from Shadowfax callback doc)
       'del-1',
       'PICKED_UP',
     );
-    expect(mockPrisma.delivery.update).not.toHaveBeenCalled();
+    // Same URL is not rewritten.
+    expect(mockPrisma.delivery.update.mock.calls[0][0].data).not.toHaveProperty(
+      'external_tracking_url',
+    );
+  });
+
+  it('clears pickup ETA when Shadowfax sends "None" and refreshes drop ETA', async () => {
+    mockPrisma.delivery.findFirst.mockResolvedValue({
+      id: 'del-1',
+      status: 'PICKED_UP',
+      external_tracking_url: 'https://track.shadowfax.in/abc123',
+    });
+
+    await request(buildApp())
+      .post('/api/v1/webhooks/shadowfax')
+      .send({
+        ...allotted,
+        order_status: 'DISPATCHED',
+        pickup_eta: 'None',
+        drop_eta: 46,
+      });
+    await flush();
+
+    expect(mockPrisma.delivery.update).toHaveBeenCalledWith({
+      where: { id: 'del-1' },
+      data: expect.objectContaining({
+        pickup_eta_at: null,
+        drop_eta_at: minutesFromNow(46),
+        provider_status: 'DISPATCHED',
+      }),
+    });
+  });
+
+  it('does not overwrite the rider with the CANCELLED placeholder rider', async () => {
+    mockPrisma.delivery.findFirst.mockResolvedValue({
+      id: 'del-1',
+      status: 'ASSIGNED',
+      external_tracking_url: null,
+    });
+
+    await request(buildApp())
+      .post('/api/v1/webhooks/shadowfax')
+      .send({
+        order_status: 'CANCELLED',
+        sfx_order_id: 21043979,
+        client_order_id: 'order_111288',
+        rider_name: 'Shadowfax',
+        rider_contact: '',
+        rider_id: 1,
+        rider_latitude: 'None',
+        pickup_eta: 'None',
+        drop_eta: 'None',
+      });
+    await flush();
+
+    const data = mockPrisma.delivery.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('rider_name');
+    expect(data).not.toHaveProperty('rider_phone');
+    expect(data).toMatchObject({ pickup_eta_at: null, drop_eta_at: null });
   });
 
   it('ignores a late ARRIVED callback after the rider was dispatched', async () => {

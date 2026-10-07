@@ -84,6 +84,42 @@ function normalizeShadowfaxTrackingUrl(
   return urlMatch?.[0];
 }
 
+/**
+ * Shadowfax sends "None" (string) for fields that no longer apply, e.g.
+ * pickup_eta once the rider is dispatched. undefined = field not sent (leave
+ * the stored value alone), null = explicitly cleared.
+ */
+function parseShadowfaxNumber(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function etaToTimestamp(
+  minutes: number | null | undefined,
+  receivedAt: Date,
+): Date | null | undefined {
+  if (minutes === undefined || minutes === null) return minutes;
+  return new Date(receivedAt.getTime() + minutes * 60_000);
+}
+
+function extractShadowfaxRider(source: any) {
+  // CANCELLED callbacks carry a placeholder rider ("Shadowfax", empty contact).
+  const phone = firstString(source?.rider_contact);
+  if (!phone) return undefined;
+
+  const latitude = parseShadowfaxNumber(source?.rider_latitude);
+  const longitude = parseShadowfaxNumber(source?.rider_longitude);
+  return {
+    name: firstString(source?.rider_name),
+    phone,
+    latitude: latitude ?? undefined,
+    longitude: longitude ?? undefined,
+  };
+}
+
 function extractShadowfaxCallback(body: any) {
   const order = body?.order || body?.data || body?.payload || {};
   const coid = firstString(
@@ -129,8 +165,22 @@ function extractShadowfaxCallback(body: any) {
     ),
   );
 
-  return { coid, sfxOrderId, status, trackingUrl };
+  const source = body?.order_status || body?.status ? body : order;
+
+  return {
+    coid,
+    sfxOrderId,
+    status,
+    trackingUrl,
+    rider: extractShadowfaxRider(source),
+    pickupEtaMinutes: parseShadowfaxNumber(source?.pickup_eta),
+    dropEtaMinutes: parseShadowfaxNumber(source?.drop_eta),
+  };
 }
+
+type ShadowfaxCallback = ReturnType<typeof extractShadowfaxCallback> & {
+  coid: string;
+};
 
 /**
  * @openapi
@@ -154,11 +204,10 @@ function extractShadowfaxCallback(body: any) {
  *         description: Webhook received successfully
  */
 async function processShadowfaxWebhook(
-  coid: string,
-  sfxOrderId?: string,
-  status?: string,
-  trackingUrl?: string,
+  callback: ShadowfaxCallback,
+  receivedAt: Date,
 ) {
+  const { coid, sfxOrderId, status, trackingUrl, rider } = callback;
   const internalStatus = status ? mapShadowfaxStatus(status) : null;
 
   const delivery = await prisma.delivery.findFirst({
@@ -174,6 +223,11 @@ async function processShadowfaxWebhook(
   });
 
   if (delivery) {
+    const isStale =
+      internalStatus !== null &&
+      internalStatus !== delivery.status &&
+      !isForwardDeliveryTransition(delivery.status, internalStatus);
+
     if (
       internalStatus &&
       isForwardDeliveryTransition(delivery.status, internalStatus)
@@ -186,7 +240,7 @@ async function processShadowfaxWebhook(
         provider_status: status,
       });
       await deliveryService.updateDeliveryStatus(delivery.id, internalStatus);
-    } else if (internalStatus && delivery.status !== internalStatus) {
+    } else if (isStale) {
       console.log('[Shadowfax Webhook] ignored out-of-order status', {
         coid,
         delivery_id: delivery.id,
@@ -194,15 +248,50 @@ async function processShadowfaxWebhook(
         provider_status: status,
       });
     }
-    if (trackingUrl && trackingUrl !== delivery.external_tracking_url) {
-      await prisma.delivery.update({
-        where: { id: delivery.id },
-        data: { external_tracking_url: trackingUrl },
-      });
-      console.log('[Shadowfax Webhook] saved tracking URL', {
+
+    // A stale callback carries older rider/ETA data than what is stored.
+    if (!isStale) {
+      const data = {
+        ...(trackingUrl && trackingUrl !== delivery.external_tracking_url
+          ? { external_tracking_url: trackingUrl }
+          : {}),
+        ...(rider
+          ? {
+              rider_name: rider.name ?? null,
+              rider_phone: rider.phone,
+              ...(rider.latitude !== undefined &&
+              rider.longitude !== undefined
+                ? {
+                    rider_latitude: rider.latitude,
+                    rider_longitude: rider.longitude,
+                  }
+                : {}),
+            }
+          : {}),
+        ...(callback.pickupEtaMinutes !== undefined
+          ? {
+              pickup_eta_at: etaToTimestamp(
+                callback.pickupEtaMinutes,
+                receivedAt,
+              ),
+            }
+          : {}),
+        ...(callback.dropEtaMinutes !== undefined
+          ? { drop_eta_at: etaToTimestamp(callback.dropEtaMinutes, receivedAt) }
+          : {}),
+        ...(status ? { provider_status: status } : {}),
+        provider_updated_at: receivedAt,
+      };
+
+      await prisma.delivery.update({ where: { id: delivery.id }, data });
+      console.log('[Shadowfax Webhook] saved provider tracking data', {
         coid,
         delivery_id: delivery.id,
-        tracking_url_present: true,
+        provider_status: status,
+        tracking_url_saved: 'external_tracking_url' in data,
+        rider_present: Boolean(rider),
+        pickup_eta_minutes: callback.pickupEtaMinutes,
+        drop_eta_minutes: callback.dropEtaMinutes,
       });
     }
     console.log('[Shadowfax Webhook] processed callback', {
@@ -255,9 +344,9 @@ function handleShadowfaxWebhook(req: any, res: any) {
     return res.status(401).json({ error: 'Invalid or missing webhook secret' });
   }
 
-  const { coid, sfxOrderId, status, trackingUrl } = extractShadowfaxCallback(
-    req.body,
-  );
+  const receivedAt = new Date();
+  const callback = extractShadowfaxCallback(req.body);
+  const { coid, sfxOrderId, status, trackingUrl } = callback;
 
   if (!coid) {
     console.warn('[Shadowfax Webhook] rejected callback: no order identifier', {
@@ -285,7 +374,7 @@ function handleShadowfaxWebhook(req: any, res: any) {
     status_code: 200,
   });
 
-  processShadowfaxWebhook(coid, sfxOrderId, status, trackingUrl).catch((error) => {
+  processShadowfaxWebhook({ ...callback, coid }, receivedAt).catch((error) => {
     console.error('[Shadowfax Webhook] processing error', {
       coid,
       sfx_order_id: sfxOrderId,

@@ -333,9 +333,18 @@ Response shape:
   },
   "pickup_eta_minutes": 23,
   "drop_eta_minutes": 33,
+  "pickup_eta_at": "2026-10-07T10:23:00.000Z",
+  "drop_eta_at": "2026-10-07T10:33:00.000Z",
+  "provider_updated_at": "2026-10-07T10:00:00.000Z",
   "status_updated": false
 }
 ```
+
+ETA fields come from Shadowfax webhook callbacks, not the status API:
+
+- `pickup_eta_minutes` / `drop_eta_minutes`: minutes left right now (counts down between polls). `null`/missing when Shadowfax has not sent an ETA yet, when the leg is done (e.g. pickup ETA after dispatch), or once the delivery is DELIVERED/FAILED.
+- `pickup_eta_at` / `drop_eta_at`: the same ETA as an absolute time, so the app can run its own countdown between polls.
+- `rider.name` / `rider.phone` come from the latest callback; `rider.latitude` / `rider.longitude` come from the live status API when available.
 
 Frontend behavior:
 

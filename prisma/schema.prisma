@@ -471,6 +471,16 @@ model Delivery {
   pickup_time           DateTime?
   delivered_time        DateTime?
   pod_image             String? // Proof of Delivery
+  // Latest rider/ETA data pushed by Shadowfax callbacks. ETAs are stored as
+  // absolute times (callback time + eta minutes) so they count down.
+  rider_name            String?
+  rider_phone           String?
+  rider_latitude        Float?
+  rider_longitude       Float?
+  provider_status       String?
+  pickup_eta_at         DateTime?
+  drop_eta_at           DateTime?
+  provider_updated_at   DateTime?
   status                DeliveryStatus   @default(PENDING)
   created_at            DateTime         @default(now())
   updated_at            DateTime         @updatedAt

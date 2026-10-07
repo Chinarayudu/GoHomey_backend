@@ -29,7 +29,6 @@ export interface ShadowfaxLocation {
   city?: string;
   latitude?: number;
   longitude?: number;
-  delivery_otp?: string;
 }
 
 export interface ShadowfaxCreateOrderPayload {
@@ -49,8 +48,6 @@ export interface ShadowfaxCreateOrderPayload {
     order_value: number;
     paid: 'true' | 'false';
     client_order_id: string;
-    pickup_otp?: string;
-    return_otp?: string;
     rain_flag?: boolean;
     delivery_instruction?: {
       drop_instruction_text?: string;
@@ -81,8 +78,6 @@ export interface ShadowfaxCreateOrderResponse {
     tracking_url?: string;
     message?: string;
   };
-  pickup_otp?: number;
-  drop_otp?: number;
   total_amount?: number;
 }
 

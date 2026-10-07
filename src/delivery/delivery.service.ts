@@ -616,7 +616,6 @@ export class DeliveryService {
           stagingLocation?.latitude ?? userAddress?.latitude ?? undefined,
         longitude:
           stagingLocation?.longitude ?? userAddress?.longitude ?? undefined,
-        delivery_otp: '7412',
       },
       order_items: this.buildShadowfaxOrderItems(
         order.items,
@@ -636,8 +635,6 @@ export class DeliveryService {
         // customer had already paid in full.
         paid: 'true',
         client_order_id: order.id,
-        pickup_otp: '1232',
-        return_otp: '1234',
         rain_flag: false,
         delivery_instruction: {
           drop_instruction_text: 'Please deliver the GoHomey order.',
@@ -1054,8 +1051,10 @@ export class DeliveryService {
           const marketplaceTrackingUrl =
             this.getMarketplaceTrackingUrl(statusResponse);
           trackingUrl = marketplaceTrackingUrl || trackingUrl;
-          pickupEta = statusData?.order_details?.pickup_eta;
-          dropEta = statusData?.order_details?.drop_eta;
+          // ETAs come from the webhook (see below); the status API values
+          // are only logged, they do not match what Shadowfax shows customers.
+          const apiPickupEta = statusData?.order_details?.pickup_eta;
+          const apiDropEta = statusData?.order_details?.drop_eta;
 
           const riderLocation = statusData?.rider_details?.rider_location;
           const riderLatitude =
@@ -1097,8 +1096,8 @@ export class DeliveryService {
             track_url_present: Boolean(marketplaceTrackingUrl),
             stored_track_url_present: Boolean(delivery.external_tracking_url),
             rider_present: Boolean(rider),
-            pickup_eta_minutes: pickupEta,
-            drop_eta_minutes: dropEta,
+            api_pickup_eta_minutes: apiPickupEta,
+            api_drop_eta_minutes: apiDropEta,
           });
 
           if (
@@ -1133,6 +1132,36 @@ export class DeliveryService {
       }
     }
 
+    // Webhook data: ETAs are stored as absolute times, so report what is
+    // left of them now. Rider name/phone come from the latest callback; the
+    // status API location is live, so it wins over the callback snapshot.
+    const isFinished =
+      delivery.status === DeliveryStatus.DELIVERED ||
+      delivery.status === DeliveryStatus.FAILED;
+    const minutesUntil = (at?: Date | null) =>
+      at && !isFinished
+        ? Math.max(0, Math.ceil((at.getTime() - Date.now()) / 60_000))
+        : undefined;
+    pickupEta = minutesUntil(delivery.pickup_eta_at);
+    dropEta = minutesUntil(delivery.drop_eta_at);
+    providerStatus = providerStatus ?? delivery.provider_status ?? undefined;
+
+    const hasLiveLocation =
+      rider?.latitude !== undefined && rider?.longitude !== undefined;
+    const mergedRider = {
+      name: delivery.rider_name ?? rider?.name,
+      phone: delivery.rider_phone ?? rider?.phone,
+      latitude: hasLiveLocation
+        ? rider?.latitude
+        : (delivery.rider_latitude ?? undefined),
+      longitude: hasLiveLocation
+        ? rider?.longitude
+        : (delivery.rider_longitude ?? undefined),
+    };
+    rider = Object.values(mergedRider).some((value) => value !== undefined)
+      ? mergedRider
+      : undefined;
+
     if (
       !trackingUrl &&
       delivery.external_tracking_id &&
@@ -1160,6 +1189,9 @@ export class DeliveryService {
       rider,
       pickup_eta_minutes: pickupEta,
       drop_eta_minutes: dropEta,
+      pickup_eta_at: isFinished ? null : delivery.pickup_eta_at,
+      drop_eta_at: isFinished ? null : delivery.drop_eta_at,
+      provider_updated_at: delivery.provider_updated_at,
       status_updated: statusUpdated,
       tracking_refresh_error: trackingRefreshError,
       tracking_message: trackingMessage,
