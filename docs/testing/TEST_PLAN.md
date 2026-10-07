@@ -40,19 +40,19 @@ Full component/integration coverage for payments, orders (beyond the status-owne
 
 | Level | Tool | Location | Requires |
 |---|---|---|---|
-| Component (unit) | Jest, mocked Prisma/Redis/fetch | `src/**/*.spec.ts` | Nothing — no DB/Redis needed |
-| Integration | Jest + Supertest, real app | `src/**/*.integration.spec.ts` | Local Postgres + Redis (same `.env` as `npm run start:dev`) |
+| Component (unit) | Jest, mocked Prisma/fetch | `src/**/*.spec.ts` | Nothing — no DB needed |
+| Integration | Jest + Supertest, real app | `src/**/*.integration.spec.ts` | Local Postgres (same `.env` as `npm run start:dev`) |
 | Sanity | Subset of integration tests tagged `[SANITY]`, plus a manual curl checklist | `npm run test:sanity`, `docs/testing/SANITY_CHECKLIST.md` | Same as integration, or just `curl` + a running server |
 | UAT | Manual, human tester | `docs/testing/UAT_TEST_CASES_ACCOUNTS.md` | A running backend + (ideally) the admin portal + a real phone for OTP/Firebase cases |
 
 ## 4. Environment & Prerequisites
 
 - Node version per `package.json` `engines` (`^20.19 \|\| ^22.12 \|\| >=24.0`)
-- `.env` populated with `DATABASE_URL`, `REDIS_HOST`/`REDIS_PORT`(/`REDIS_USERNAME`/`REDIS_PASSWORD`/`REDIS_TLS`), `JWT_SECRET`. MSG91/Firebase keys are optional for automated tests (MSG91 mock-SMS console-logs when unset; Firebase paths aren't exercised by automation — see §7).
+- `.env` populated with `DATABASE_URL`, `JWT_SECRET`. MSG91/Firebase keys are optional for automated tests (MSG91 mock-SMS console-logs when unset; Firebase paths aren't exercised by automation — see §7).
 - `npm install` (adds `jest`, `ts-jest`, `@types/jest`, `supertest`, `@types/supertest`, `cross-env` as devDependencies)
 - Commands:
   - `npm test` — component tests, safe anywhere, no external services
-  - `npm run test:integration` — integration tests against your local Postgres/Redis; forces `OTP_BYPASS_ENABLED=true` for the test process only (never touches your real `.env`)
+  - `npm run test:integration` — integration tests against your local Postgres; forces `OTP_BYPASS_ENABLED=true` for the test process only (never touches your real `.env`)
   - `npm run test:sanity` — fast `[SANITY]`-tagged subset of the integration tests
   - `npm run test:coverage` — component tests with coverage report
 
@@ -68,7 +68,7 @@ Every row created by automated tests is tagged so it can never be confused with 
 
 ## 6. Entry / Exit Criteria
 
-**Entry:** `.env` is configured, local Postgres/Redis are reachable (same ones `npm run start:dev` uses), `npm install` has been run.
+**Entry:** `.env` is configured, local Postgres are reachable (same ones `npm run start:dev` uses), `npm install` has been run.
 
 **Exit (automated):**
 - `npm test` is green except the one intentionally `test.failing()`-marked defect-proof case (`src/users/users.service.spec.ts`, see FINDINGS.md AC-001) — if that test ever starts reporting a real failure, it means the bug was fixed and the test should be converted to a normal `test()`.
@@ -101,5 +101,5 @@ Every row created by automated tests is tagged so it can never be confused with 
 
 | Role | Name | Date | Environment tested | Verdict |
 |---|---|---|---|---|
-| Automation author | Claude (this pass) | 2026-08-14 | Local dev (Postgres/Redis via `.env`) | See `TEST_EXECUTION_SUMMARY.md` |
+| Automation author | Claude (this pass) | 2026-08-14 | Local dev (Postgres via `.env`) | See `TEST_EXECUTION_SUMMARY.md` |
 | Second tester (UAT) | _______________ | _______________ | _______________ | _______________ |

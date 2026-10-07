@@ -82,7 +82,7 @@ The same checks (plus a few more) run automatically via:
 npm run test:sanity
 ```
 
-against your local Postgres/Redis — see `docs/testing/TEST_PLAN.md` for setup.
+against your local Postgres — see `docs/testing/TEST_PLAN.md` for setup.
 
 ## After running this checklist
 

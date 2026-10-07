@@ -2,7 +2,7 @@ import request from 'supertest';
 import { app, setupTestDb, cleanupQaData, closeConnections, qaEmail, qaPhone } from '../test/testApp';
 
 /**
- * Integration tests hit the real local Postgres/Redis configured in .env.
+ * Integration tests hit the real local Postgres configured in .env.
  * Run via `npm run test:integration`, which forces OTP_BYPASS_ENABLED=true for
  * this process only, so OTP send/verify is deterministic without a real SMS
  * provider. Every row created here uses the reserved QA email domain/phone

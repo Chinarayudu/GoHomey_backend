@@ -1,7 +1,5 @@
 import app from '../app';
 import { prisma, connectPrisma, disconnectPrisma } from '../prisma/prisma.service';
-import { redisClient } from '../common/redis/redis.client';
-import { ordersQueue } from '../common/queues/queues';
 
 export { app };
 
@@ -63,6 +61,4 @@ export async function cleanupQaData(): Promise<void> {
 
 export async function closeConnections(): Promise<void> {
   await disconnectPrisma();
-  await redisClient.quit().catch(() => {});
-  await ordersQueue.close().catch(() => {});
 }

@@ -42,7 +42,7 @@
 | OTP-01 | Send OTP to a new phone | None | Your real phone number | `POST /api/v1/auth/send-otp` | HTTP 200; SMS arrives within ~30s (unless bypass is on) | | | |
 | OTP-02 | Verify with correct OTP — new phone | OTP-01 done | The OTP received | `POST /api/v1/auth/verify-otp` | HTTP 200, `isNewUser: true`, a short-lived token | | | |
 | OTP-03 | Verify with wrong OTP | OTP-01 done | An incorrect 6-digit code | `POST /api/v1/auth/verify-otp` | HTTP 400, "Invalid or expired OTP" | | | |
-| OTP-04 | Verify after expiry | OTP-01 done | Wait 5+ minutes before verifying | `POST /api/v1/auth/verify-otp` | HTTP 400 (OTP should no longer be valid — Redis TTL is 300s) | | | |
+| OTP-04 | Verify after expiry | OTP-01 done | Wait 5+ minutes before verifying | `POST /api/v1/auth/verify-otp` | HTTP 400 (OTP should no longer be valid — OTP expiry is 300s) | | | |
 | OTP-05 | Reviewer bypass phone (if configured) | Team has shared `REVIEW_TEST_PHONE`/`REVIEW_TEST_OTP` | Those exact values | Send + verify OTP using the reviewer phone/OTP pair | HTTP 200, works without a real SMS; **a normal/different phone number must NOT be affected by this** | | | |
 | OTP-06 | Resend OTP | OTP-01 done | Same phone | Call `send-otp` again before verifying | New OTP overwrites the old one; the old OTP should no longer verify | | | |
 | OTP-07 | Existing user OTP login | A User already exists with this phone (e.g. from REG-01, use its phone) | — | Send + verify OTP for that phone | HTTP 200, `isNewUser: false`, full login `token` + `user` | | | |

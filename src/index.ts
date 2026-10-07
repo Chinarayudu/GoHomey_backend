@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import 'reflect-metadata';
 import app from './app';
 import { connectPrisma } from './prisma/prisma.service';
-import { setupOrdersWorker } from './orders/order.processor';
 import { setupFuelScheduler } from './fuel/fuel.scheduler';
 
 dotenv.config();
@@ -18,8 +17,7 @@ async function bootstrap() {
   await connectPrisma();
   console.log('Database connected successfully.');
 
-  // Initialize Workers
-  setupOrdersWorker();
+  // Initialize Schedulers
   setupFuelScheduler();
 
   // Start Express Server

@@ -1,5 +1,5 @@
 import { prisma } from '../prisma/prisma.service';
-import { ordersQueue } from '../common/queues/queues';
+import { dispatchOrderJob } from './order.processor';
 import { paymentsService } from '../payments/payments.service';
 import {
   ChefApplicationStatus,
@@ -246,7 +246,7 @@ export class OrdersService {
       });
 
       // 5. Add to queue for async tasks
-      await ordersQueue.add('send-order-notification', {
+      dispatchOrderJob('send-order-notification', {
         orderId: order.id,
         chefId: meal.chef_id,
         userId: userId,
@@ -319,7 +319,7 @@ export class OrdersService {
         },
       });
 
-      await ordersQueue.add('send-order-notification', {
+      dispatchOrderJob('send-order-notification', {
         orderId: order.id,
         chefId: event.chef_id,
         userId: userId,
@@ -412,7 +412,7 @@ export class OrdersService {
       });
 
       // 5. Add to queue for async tasks
-      await ordersQueue.add('send-order-notification', {
+      dispatchOrderJob('send-order-notification', {
         orderId: order.id,
         chefId: item.chef_id,
         userId: userId,
@@ -772,7 +772,7 @@ export class OrdersService {
         });
 
         // 4. Notify chef (async)
-        await ordersQueue.add('send-order-notification', {
+        dispatchOrderJob('send-order-notification', {
           orderId: order.id,
           chefId: chefId,
           userId: userId,
@@ -828,24 +828,12 @@ export class OrdersService {
       }
     }
 
-    // Notify user of status update. Fire-and-forget: BullMQ/ioredis queue a
-    // command indefinitely (not just retry-then-reject) while Redis is
-    // unreachable, so `await`ing this would hang the whole status-update
-    // response on notification-queue availability. This endpoint is now the
-    // authorization-checked source of truth for order status and must stay
-    // resilient to Redis being down.
-    ordersQueue
-      .add('send-order-status-update', {
-        orderId: order.id,
-        userId: order.user_id,
-        status,
-      })
-      .catch((error) => {
-        console.error('[Order Status] notification enqueue failed', {
-          order_id: order.id,
-          error: error instanceof Error ? error.message : error,
-        });
-      });
+    // Notify user of status update (fire-and-forget; never blocks this response).
+    dispatchOrderJob('send-order-status-update', {
+      orderId: order.id,
+      userId: order.user_id,
+      status,
+    });
 
     return order;
   }

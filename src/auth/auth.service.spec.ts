@@ -1,11 +1,11 @@
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 
-jest.mock('../common/redis/redis.client', () => ({
-  redisClient: {
-    setex: jest.fn().mockResolvedValue('OK'),
+jest.mock('../common/otp/otp.store', () => ({
+  otpStore: {
+    save: jest.fn().mockResolvedValue(undefined),
     get: jest.fn(),
-    del: jest.fn().mockResolvedValue(1),
+    delete: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -42,16 +42,16 @@ jest.mock('../common/services/firebase.service', () => ({
   verifyFirebasePhoneToken: jest.fn(),
 }));
 
-import { redisClient } from '../common/redis/redis.client';
+import { otpStore } from '../common/otp/otp.store';
 import { prisma } from '../prisma/prisma.service';
 import { chefsService } from '../chefs/chefs.service';
 import { usersService } from '../users/users.service';
 import { AuthService, authService as defaultAuthService } from './auth.service';
 
-const mockRedis = redisClient as unknown as {
-  setex: jest.Mock;
+const mockOtpStore = otpStore as unknown as {
+  save: jest.Mock;
   get: jest.Mock;
-  del: jest.Mock;
+  delete: jest.Mock;
 };
 const mockPrisma = prisma as unknown as {
   user: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; create: jest.Mock };
@@ -71,7 +71,7 @@ const ORIGINAL_ENV = { ...process.env };
  * MSG91_AUTH_KEY / MSG91_TEMPLATE_ID, by contrast, are read live inside
  * sendOtp() on every call. So env overrides must stay in place for the whole
  * test, not just at construction time — restoration happens in afterEach.
- * The fresh instance still shares the same mocked redisClient/prisma/
+ * The fresh instance still shares the same mocked otpStore/prisma/
  * chefsService/usersService singletons as `defaultAuthService` since those
  * are only imported once at module scope.
  */
@@ -94,24 +94,24 @@ afterEach(() => {
 });
 
 describe('AuthService.sendOtp', () => {
-  it('generates and stores a 6-digit OTP via Redis when no bypass/provider is configured', async () => {
+  it('generates and stores a 6-digit OTP via the OTP store when no bypass/provider is configured', async () => {
     const result = await defaultAuthService.sendOtp('+919876500001');
 
     expect(result).toEqual({ message: 'OTP sent successfully' });
-    expect(mockRedis.setex).toHaveBeenCalledTimes(1);
-    const [key, ttl, otp] = mockRedis.setex.mock.calls[0];
-    expect(key).toBe('OTP:+919876500001');
+    expect(mockOtpStore.save).toHaveBeenCalledTimes(1);
+    const [phone, otp, ttl] = mockOtpStore.save.mock.calls[0];
+    expect(phone).toBe('+919876500001');
     expect(ttl).toBe(300);
     expect(otp).toMatch(/^\d{6}$/);
   });
 
-  it('short-circuits and does not touch Redis when OTP_BYPASS_ENABLED=true', async () => {
+  it('short-circuits and does not touch the OTP store when OTP_BYPASS_ENABLED=true', async () => {
     const bypassService = loadAuthServiceWithEnv({ OTP_BYPASS_ENABLED: 'true' });
 
     const result = await bypassService.sendOtp('+919876500002');
 
     expect(result).toEqual({ message: 'OTP sent successfully' });
-    expect(mockRedis.setex).not.toHaveBeenCalled();
+    expect(mockOtpStore.save).not.toHaveBeenCalled();
   });
 
   it('stores the fixed REVIEW_TEST_OTP for the configured REVIEW_TEST_PHONE without calling a provider', async () => {
@@ -124,7 +124,7 @@ describe('AuthService.sendOtp', () => {
     const result = await reviewService.sendOtp('+910000000000');
 
     expect(result).toEqual({ message: 'OTP sent successfully' });
-    expect(mockRedis.setex).toHaveBeenCalledWith('OTP:+910000000000', 300, '112233');
+    expect(mockOtpStore.save).toHaveBeenCalledWith('+910000000000', '112233', 300);
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
@@ -148,7 +148,7 @@ describe('AuthService.sendOtp', () => {
     const body = JSON.parse((options as any).body);
     expect(body.template_id).toBe('test-template-id');
     expect(body.recipients[0].mobiles).toBe('919876500003');
-    expect(mockRedis.setex).toHaveBeenCalledTimes(1);
+    expect(mockOtpStore.save).toHaveBeenCalledTimes(1);
     fetchSpy.mockRestore();
   });
 
@@ -165,14 +165,14 @@ describe('AuthService.sendOtp', () => {
     await expect(msg91Service.sendOtp('+919876500004')).rejects.toMatchObject({
       status: 502,
     });
-    expect(mockRedis.setex).not.toHaveBeenCalled();
+    expect(mockOtpStore.save).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 });
 
 describe('AuthService.verifyOtp', () => {
-  it('rejects with 400 when Redis has no OTP stored for the phone', async () => {
-    mockRedis.get.mockResolvedValue(null);
+  it('rejects with 400 when the OTP store has no OTP stored for the phone', async () => {
+    mockOtpStore.get.mockResolvedValue(null);
 
     await expect(defaultAuthService.verifyOtp('+919876500005', '123456')).rejects.toMatchObject({
       status: 400,
@@ -181,7 +181,7 @@ describe('AuthService.verifyOtp', () => {
   });
 
   it('rejects with 400 when the supplied OTP does not match the stored one', async () => {
-    mockRedis.get.mockResolvedValue('654321');
+    mockOtpStore.get.mockResolvedValue('654321');
 
     await expect(defaultAuthService.verifyOtp('+919876500005', '123456')).rejects.toMatchObject({
       status: 400,
@@ -189,17 +189,17 @@ describe('AuthService.verifyOtp', () => {
   });
 
   it('deletes the OTP and resolves identity on a correct match', async () => {
-    mockRedis.get.mockResolvedValue('123456');
+    mockOtpStore.get.mockResolvedValue('123456');
     mockPrisma.user.findUnique.mockResolvedValue(null);
     mockChefsService.findByPhone.mockResolvedValue(null);
 
     const result: any = await defaultAuthService.verifyOtp('+919876500006', '123456');
 
-    expect(mockRedis.del).toHaveBeenCalledWith('OTP:+919876500006');
+    expect(mockOtpStore.delete).toHaveBeenCalledWith('+919876500006');
     expect(result.isNewUser).toBe(true);
   });
 
-  it('accepts any OTP without touching Redis when OTP_BYPASS_ENABLED=true', async () => {
+  it('accepts any OTP without touching the OTP store when OTP_BYPASS_ENABLED=true', async () => {
     const bypassService = loadAuthServiceWithEnv({ OTP_BYPASS_ENABLED: 'true' });
     mockPrisma.user.findUnique.mockResolvedValue(null);
     mockChefsService.findByPhone.mockResolvedValue(null);
@@ -207,10 +207,10 @@ describe('AuthService.verifyOtp', () => {
     const result = await bypassService.verifyOtp('+919876500007', 'anything');
 
     expect(result.isNewUser).toBe(true);
-    expect(mockRedis.get).not.toHaveBeenCalled();
+    expect(mockOtpStore.get).not.toHaveBeenCalled();
   });
 
-  it('requires an exact match for the reviewer phone/OTP pair, independent of Redis', async () => {
+  it('requires an exact match for the reviewer phone/OTP pair, independent of the OTP store', async () => {
     const reviewService = loadAuthServiceWithEnv({
       REVIEW_TEST_PHONE: '+910000000000',
       REVIEW_TEST_OTP: '112233',
@@ -221,20 +221,20 @@ describe('AuthService.verifyOtp', () => {
     const result = await reviewService.verifyOtp('+910000000000', '112233');
 
     expect(result.isNewUser).toBe(true);
-    expect(mockRedis.get).not.toHaveBeenCalled();
+    expect(mockOtpStore.get).not.toHaveBeenCalled();
   });
 
-  it('falls back to the normal Redis-backed flow when the reviewer phone is given the wrong OTP', async () => {
+  it('falls back to the normal OTP-store-backed flow when the reviewer phone is given the wrong OTP', async () => {
     const reviewService = loadAuthServiceWithEnv({
       REVIEW_TEST_PHONE: '+910000000000',
       REVIEW_TEST_OTP: '112233',
     });
-    mockRedis.get.mockResolvedValue(null);
+    mockOtpStore.get.mockResolvedValue(null);
 
     await expect(reviewService.verifyOtp('+910000000000', '999999')).rejects.toMatchObject({
       status: 400,
     });
-    expect(mockRedis.get).toHaveBeenCalled();
+    expect(mockOtpStore.get).toHaveBeenCalled();
   });
 });
 
@@ -242,7 +242,7 @@ describe('AuthService identity resolution (via verifyOtp)', () => {
   const phone = '+919876500010';
 
   beforeEach(() => {
-    mockRedis.get.mockResolvedValue('123456');
+    mockOtpStore.get.mockResolvedValue('123456');
   });
 
   it('issues a short-lived (24h) temp registration token for a brand-new phone', async () => {

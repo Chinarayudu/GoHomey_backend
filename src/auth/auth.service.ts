@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { usersService } from '../users/users.service';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
-import { redisClient } from '../common/redis/redis.client';
+import { otpStore } from '../common/otp/otp.store';
 import { chefsService } from '../chefs/chefs.service';
 import { prisma } from '../prisma/prisma.service';
 import { JWT_SECRET } from '../config/env';
@@ -121,7 +121,7 @@ export class AuthService {
     // Reviewer test number: skip the SMS provider entirely (no real SMS, no cost) and
     // store the fixed OTP so the app's normal verify step still works.
     if (this.isReviewPhone(phone) && this.reviewOtp) {
-      await redisClient.setex(`OTP:${phone}`, 300, this.reviewOtp);
+      await otpStore.save(phone, this.reviewOtp, 300);
       console.log('[Review OTP] Fixed code stored for test phone', phone);
       return { message: 'OTP sent successfully' };
     }
@@ -178,7 +178,7 @@ export class AuthService {
     }
 
     // Store OTP only after MSG91 accepts the SMS request, or immediately in mock mode.
-    await redisClient.setex(`OTP:${phone}`, 300, otp);
+    await otpStore.save(phone, otp, 300);
 
     return { message: 'OTP sent successfully' };
   }
@@ -189,13 +189,13 @@ export class AuthService {
       return this.resolveIdentity(phone);
     }
 
-    // Reviewer test number: accept the fixed OTP directly, independent of Redis.
+    // Reviewer test number: accept the fixed OTP directly, independent of the OTP store.
     if (this.isReviewPhone(phone) && this.reviewOtp && otp.trim() === this.reviewOtp) {
-      await redisClient.del(`OTP:${phone}`).catch(() => {});
+      await otpStore.delete(phone).catch(() => {});
       return this.resolveIdentity(phone);
     }
 
-    const storedOtp = await redisClient.get(`OTP:${phone}`);
+    const storedOtp = await otpStore.get(phone);
 
     if (!storedOtp || storedOtp !== otp) {
       const err: any = new Error('Invalid or expired OTP');
@@ -204,7 +204,7 @@ export class AuthService {
     }
 
     // Clear OTP after successful validation
-    await redisClient.del(`OTP:${phone}`);
+    await otpStore.delete(phone);
 
     return this.resolveIdentity(phone);
   }

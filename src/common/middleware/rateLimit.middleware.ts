@@ -3,8 +3,8 @@ import rateLimit, { Options } from 'express-rate-limit';
 /**
  * Uses express-rate-limit's default in-memory store. Fine for a single
  * instance; if this app ever runs multiple instances behind a load balancer,
- * swap in a shared store (e.g. rate-limit-redis against the existing
- * redisClient) so limits are enforced consistently across instances.
+ * swap in a shared store (e.g. a Postgres- or Redis-backed store) so limits
+ * are enforced consistently across instances.
  */
 export function createRateLimiter(options: {
   windowMs: number;

@@ -554,3 +554,11 @@ model WalletAdjustment {
 
   @@index([chef_id, created_at])
 }
+
+// One pending login OTP per phone (replaces the former Redis `OTP:<phone>` key).
+model OtpCode {
+  phone      String   @id
+  code       String
+  expires_at DateTime
+  created_at DateTime @default(now())
+}
