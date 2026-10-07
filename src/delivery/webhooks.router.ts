@@ -4,6 +4,7 @@ import { DeliveryStatus } from '@prisma/client';
 import { prisma } from '../prisma/prisma.service';
 import crypto from 'crypto';
 import { webhookRateLimiter } from '../common/middleware/rateLimit.middleware';
+import { isForwardDeliveryTransition } from './delivery-status';
 
 const webhooksRouter = Router();
 
@@ -99,6 +100,14 @@ function extractShadowfaxCallback(body: any) {
     order?.sfx_order_id,
     order?.flash_order_id,
   );
+  // Marketplace callbacks carry both our order id (client_order_id) and
+  // Shadowfax's own id (sfx_order_id, stored as external_tracking_id).
+  const sfxOrderId = firstString(
+    body?.sfx_order_id,
+    body?.flash_order_id,
+    order?.sfx_order_id,
+    order?.flash_order_id,
+  );
   const status = firstString(
     body?.status,
     body?.order_status,
@@ -120,7 +129,7 @@ function extractShadowfaxCallback(body: any) {
     ),
   );
 
-  return { coid, status, trackingUrl };
+  return { coid, sfxOrderId, status, trackingUrl };
 }
 
 /**
@@ -146,6 +155,7 @@ function extractShadowfaxCallback(body: any) {
  */
 async function processShadowfaxWebhook(
   coid: string,
+  sfxOrderId?: string,
   status?: string,
   trackingUrl?: string,
 ) {
@@ -153,12 +163,21 @@ async function processShadowfaxWebhook(
 
   const delivery = await prisma.delivery.findFirst({
     where: {
-      OR: [{ order_id: String(coid) }, { external_tracking_id: String(coid) }],
+      OR: [
+        { order_id: coid },
+        { external_tracking_id: coid },
+        ...(sfxOrderId && sfxOrderId !== coid
+          ? [{ external_tracking_id: sfxOrderId }]
+          : []),
+      ],
     },
   });
 
   if (delivery) {
-    if (internalStatus && delivery.status !== internalStatus) {
+    if (
+      internalStatus &&
+      isForwardDeliveryTransition(delivery.status, internalStatus)
+    ) {
       console.log('[Shadowfax Webhook] updating delivery status', {
         coid,
         delivery_id: delivery.id,
@@ -167,6 +186,13 @@ async function processShadowfaxWebhook(
         provider_status: status,
       });
       await deliveryService.updateDeliveryStatus(delivery.id, internalStatus);
+    } else if (internalStatus && delivery.status !== internalStatus) {
+      console.log('[Shadowfax Webhook] ignored out-of-order status', {
+        coid,
+        delivery_id: delivery.id,
+        current_status: delivery.status,
+        provider_status: status,
+      });
     }
     if (trackingUrl && trackingUrl !== delivery.external_tracking_url) {
       await prisma.delivery.update({
@@ -201,7 +227,9 @@ function handleShadowfaxWebhook(req: any, res: any) {
     return res.status(401).json({ error: 'Invalid or missing webhook secret' });
   }
 
-  const { coid, status, trackingUrl } = extractShadowfaxCallback(req.body);
+  const { coid, sfxOrderId, status, trackingUrl } = extractShadowfaxCallback(
+    req.body,
+  );
 
   if (!coid) {
     return res.status(400).json({
@@ -212,6 +240,7 @@ function handleShadowfaxWebhook(req: any, res: any) {
   console.log('[Shadowfax Webhook] received callback', {
     method: req.method,
     coid,
+    sfx_order_id: sfxOrderId,
     provider_status: status,
     tracking_url_present: Boolean(trackingUrl),
     has_body: Boolean(req.body),
@@ -223,7 +252,7 @@ function handleShadowfaxWebhook(req: any, res: any) {
     status_code: 200,
   });
 
-  processShadowfaxWebhook(coid, status, trackingUrl).catch((error) => {
+  processShadowfaxWebhook(coid, sfxOrderId, status, trackingUrl).catch((error) => {
     console.error('Shadowfax webhook processing error:', error);
   });
 }

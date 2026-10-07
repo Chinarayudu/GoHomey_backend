@@ -84,3 +84,135 @@ describe('Shadowfax webhook secret verification', () => {
     expect(res.body.received).toBe(true);
   });
 });
+
+describe('Shadowfax Marketplace callbacks (payloads from Shadowfax callback doc)', () => {
+  const { deliveryService } = jest.requireMock('./delivery.service');
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  const allotted = {
+    pick_to_drop_distance: 0.92,
+    order_status: 'ALLOTTED',
+    sfx_order_id: 21043942,
+    rider_name: 'Shashank Arya',
+    rider_contact: '7992362908',
+    rider_id: 139468,
+    client_order_id: 'order_111288',
+    allot_time: '2026-06-23T10:23:10.000000Z',
+    track_url: 'https://track.shadowfax.in/abc123',
+  };
+
+  beforeEach(() => {
+    delete process.env.SHADOWFAX_WEBHOOK_SECRET;
+  });
+
+  it('matches on client_order_id or sfx_order_id and saves track_url', async () => {
+    mockPrisma.delivery.findFirst.mockResolvedValue({
+      id: 'del-1',
+      status: 'ASSIGNED',
+      external_tracking_url: null,
+    });
+
+    const res = await request(buildApp())
+      .post('/api/v1/webhooks/shadowfax')
+      .send(allotted);
+    await flush();
+
+    expect(res.status).toBe(200);
+    expect(mockPrisma.delivery.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { order_id: 'order_111288' },
+          { external_tracking_id: 'order_111288' },
+          { external_tracking_id: '21043942' },
+        ],
+      },
+    });
+    expect(mockPrisma.delivery.update).toHaveBeenCalledWith({
+      where: { id: 'del-1' },
+      data: { external_tracking_url: 'https://track.shadowfax.in/abc123' },
+    });
+  });
+
+  it('moves the delivery forward on DISPATCHED', async () => {
+    mockPrisma.delivery.findFirst.mockResolvedValue({
+      id: 'del-1',
+      status: 'ASSIGNED',
+      external_tracking_url: 'https://track.shadowfax.in/abc123',
+    });
+
+    await request(buildApp())
+      .post('/api/v1/webhooks/shadowfax')
+      .send({
+        ...allotted,
+        order_status: 'DISPATCHED',
+        track: 'https://track.shadowfax.in/abc123',
+      });
+    await flush();
+
+    expect(deliveryService.updateDeliveryStatus).toHaveBeenCalledWith(
+      'del-1',
+      'PICKED_UP',
+    );
+    expect(mockPrisma.delivery.update).not.toHaveBeenCalled();
+  });
+
+  it('ignores a late ARRIVED callback after the rider was dispatched', async () => {
+    mockPrisma.delivery.findFirst.mockResolvedValue({
+      id: 'del-1',
+      status: 'PICKED_UP',
+      external_tracking_url: 'https://track.shadowfax.in/abc123',
+    });
+
+    await request(buildApp())
+      .post('/api/v1/webhooks/shadowfax')
+      .send({ ...allotted, order_status: 'ARRIVED' });
+    await flush();
+
+    expect(deliveryService.updateDeliveryStatus).not.toHaveBeenCalled();
+  });
+
+  it('does not reopen a DELIVERED delivery or clear its tracking URL', async () => {
+    mockPrisma.delivery.findFirst.mockResolvedValue({
+      id: 'del-1',
+      status: 'DELIVERED',
+      external_tracking_url: 'https://track.shadowfax.in/abc123',
+    });
+
+    await request(buildApp())
+      .post('/api/v1/webhooks/shadowfax')
+      .send({
+        order_status: 'ARRIVED_CUSTOMER_DOORSTEP',
+        sfx_order_id: 21043942,
+        client_order_id: 'order_111288',
+        drop_image_url: 'None',
+      });
+    await flush();
+
+    expect(deliveryService.updateDeliveryStatus).not.toHaveBeenCalled();
+    expect(mockPrisma.delivery.update).not.toHaveBeenCalled();
+  });
+
+  it('marks the delivery FAILED on CANCELLED', async () => {
+    mockPrisma.delivery.findFirst.mockResolvedValue({
+      id: 'del-1',
+      status: 'ASSIGNED',
+      external_tracking_url: null,
+    });
+
+    await request(buildApp())
+      .post('/api/v1/webhooks/shadowfax')
+      .send({
+        order_status: 'CANCELLED',
+        sfx_order_id: 21043979,
+        client_order_id: 'order_111288',
+        rider_latitude: 'None',
+        cancel_reason_text: 'Operational Issue with order',
+      });
+    await flush();
+
+    expect(deliveryService.updateDeliveryStatus).toHaveBeenCalledWith(
+      'del-1',
+      'FAILED',
+    );
+  });
+});

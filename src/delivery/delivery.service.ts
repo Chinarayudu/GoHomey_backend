@@ -2,6 +2,7 @@ import { prisma } from '../prisma/prisma.service';
 import { DeliveryStatus } from '@prisma/client';
 import { paymentsService } from '../payments/payments.service';
 import { publicChefSelectWithUser } from '../chefs/chef.select';
+import { isForwardDeliveryTransition } from './delivery-status';
 import {
   ShadowfaxClient,
   normalizeIndianPhone,
@@ -1100,7 +1101,10 @@ export class DeliveryService {
             drop_eta_minutes: dropEta,
           });
 
-          if (internalStatus && internalStatus !== delivery.status) {
+          if (
+            internalStatus &&
+            isForwardDeliveryTransition(delivery.status, internalStatus)
+          ) {
             await this.updateDeliveryStatus(delivery.id, internalStatus);
             delivery.status = internalStatus;
             statusUpdated = true;
